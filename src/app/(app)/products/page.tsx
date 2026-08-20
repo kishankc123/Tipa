@@ -2,7 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MoreHorizontal, Plus, Search } from "lucide-react";
+import {
+  FileSpreadsheet,
+  MoreHorizontal,
+  Package,
+  Plus,
+  Search,
+} from "lucide-react";
 
 import { SiteHeader } from "@/components/site-header";
 import { Badge } from "@/components/ui/badge";
@@ -56,10 +62,24 @@ export default function ProductsPage() {
               onChange={(e) => setQuery(e.target.value)}
             />
           </div>
-          <Button>
-            <Plus />
-            Add Product
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button>
+                <Plus />
+                Add Product
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => router.push("/products/new")}>
+                <Package />
+                Add Single Product
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push("/products/bulk")}>
+                <FileSpreadsheet />
+                Add Bulk Product
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         <Card>
