@@ -16,6 +16,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Switch } from "@/components/ui/switch";
 import type { EntityStatus } from "@/lib/types";
 
 interface NamedEntity {
@@ -27,6 +37,7 @@ interface NamedEntity {
 export function ManagementList({
   title,
   description,
+  entityLabel,
   items,
   icon: Icon,
   searchPlaceholder,
@@ -35,19 +46,74 @@ export function ManagementList({
 }: {
   title: string;
   description: string;
+  entityLabel: string;
   items: NamedEntity[];
   icon: LucideIcon;
   searchPlaceholder: string;
   emptyTitle: string;
   emptyDescription: string;
 }) {
+  const [entities, setEntities] = useState(items);
   const [query, setQuery] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [active, setActive] = useState(true);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter((item) => item.name.toLowerCase().includes(q));
-  }, [items, query]);
+    if (!q) return entities;
+    return entities.filter((item) => item.name.toLowerCase().includes(q));
+  }, [entities, query]);
+
+  const openAdd = () => {
+    setEditingId(null);
+    setName("");
+    setActive(true);
+    setSheetOpen(true);
+  };
+
+  const openEdit = (item: NamedEntity) => {
+    setEditingId(item.id);
+    setName(item.name);
+    setActive(item.status === "active");
+    setSheetOpen(true);
+  };
+
+  const toggleStatus = (id: string) => {
+    setEntities((rows) =>
+      rows.map((row) =>
+        row.id === id
+          ? { ...row, status: row.status === "active" ? "inactive" : "active" }
+          : row
+      )
+    );
+  };
+
+  const handleSave = () => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+
+    if (editingId) {
+      setEntities((rows) =>
+        rows.map((row) =>
+          row.id === editingId
+            ? { ...row, name: trimmed, status: active ? "active" : "inactive" }
+            : row
+        )
+      );
+    } else {
+      setEntities((rows) => [
+        ...rows,
+        {
+          id: `${Date.now()}`,
+          name: trimmed,
+          status: active ? "active" : "inactive",
+        },
+      ]);
+    }
+    setSheetOpen(false);
+  };
 
   return (
     <>
@@ -63,7 +129,7 @@ export function ManagementList({
               onChange={(e) => setQuery(e.target.value)}
             />
           </div>
-          <Button>
+          <Button onClick={openAdd}>
             <Plus />
             Add
           </Button>
@@ -107,8 +173,13 @@ export function ManagementList({
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem>Edit</DropdownMenuItem>
-                        <DropdownMenuItem variant="destructive">
+                        <DropdownMenuItem onClick={() => openEdit(item)}>
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() => toggleStatus(item.id)}
+                        >
                           {item.status === "active" ? "Inactive" : "Activate"}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
@@ -120,6 +191,47 @@ export function ManagementList({
           </CardContent>
         </Card>
       </div>
+
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>
+              {editingId ? `Edit ${entityLabel}` : `Add ${entityLabel}`}
+            </SheetTitle>
+            <SheetDescription>
+              {editingId
+                ? `Update this ${entityLabel.toLowerCase()}'s details.`
+                : `Create a new ${entityLabel.toLowerCase()}.`}
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex flex-col gap-4 px-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="entity-name">Name</Label>
+              <Input
+                id="entity-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={`${entityLabel} name`}
+              />
+            </div>
+            <div className="flex items-center justify-between rounded-lg border px-3 py-2.5">
+              <Label htmlFor="entity-active" className="font-normal">
+                Active
+              </Label>
+              <Switch
+                id="entity-active"
+                checked={active}
+                onCheckedChange={setActive}
+              />
+            </div>
+          </div>
+          <SheetFooter>
+            <Button onClick={handleSave} disabled={!name.trim()}>
+              {editingId ? "Save Changes" : "Add"}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </>
   );
 }

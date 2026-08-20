@@ -10,6 +10,7 @@ export default function CategoriesPage() {
     <ManagementList
       title="Category List"
       description="Manage your category"
+      entityLabel="Category"
       items={categories}
       icon={Grid2x2}
       searchPlaceholder="Search Category..."

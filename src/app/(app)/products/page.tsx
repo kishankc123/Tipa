@@ -119,7 +119,13 @@ export default function ProductsPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem>Edit</DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                router.push(`/products/${product.id}/edit`)
+                              }
+                            >
+                              Edit
+                            </DropdownMenuItem>
                             <DropdownMenuItem variant="destructive">
                               {product.active ? "Deactivate" : "Activate"}
                             </DropdownMenuItem>

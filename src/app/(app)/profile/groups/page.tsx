@@ -10,6 +10,7 @@ export default function GroupsPage() {
     <ManagementList
       title="Group List"
       description="Manage your group"
+      entityLabel="Group"
       items={groups}
       icon={Layers}
       searchPlaceholder="Search Group..."

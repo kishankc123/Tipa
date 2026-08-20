@@ -10,6 +10,7 @@ export default function StorePlacesPage() {
     <ManagementList
       title="Storeplace List"
       description="Manage your storeplace"
+      entityLabel="Store Place"
       items={storePlaces}
       icon={Store}
       searchPlaceholder="Search Store place..."

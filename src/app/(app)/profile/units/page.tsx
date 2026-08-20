@@ -10,6 +10,7 @@ export default function UnitsPage() {
     <ManagementList
       title="Units List"
       description="Manage your units"
+      entityLabel="Unit"
       items={units}
       icon={Box}
       searchPlaceholder="Search Units..."

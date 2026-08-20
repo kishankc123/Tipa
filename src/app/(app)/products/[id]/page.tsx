@@ -1,6 +1,7 @@
 "use client";
 
 import { use } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Package, Pin, SquarePen, Store, Trash2 } from "lucide-react";
 
@@ -79,9 +80,11 @@ export default function ProductDetailPage({
               </div>
             </div>
 
-            <Button className="w-full">
-              <SquarePen />
-              Edit Details
+            <Button className="w-full" asChild>
+              <Link href={`/products/${product.id}/edit`}>
+                <SquarePen />
+                Edit Details
+              </Link>
             </Button>
           </CardContent>
         </Card>
