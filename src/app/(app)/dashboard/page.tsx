@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Area,
@@ -32,6 +33,7 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { dashboardSummary, inventoryLogs, products } from "@/lib/mock-data";
 
@@ -57,17 +59,17 @@ const stats = [
     title: "Team",
     value: dashboardSummary.teamCount,
     icon: Users,
-    href: "/profile/team",
+    href: "/team-members",
   },
 ];
 
 const quickActions = [
   { title: "Add Product", href: "/products", icon: PackagePlus },
   { title: "Stock Logs", href: "/logs", icon: ClipboardList },
-  { title: "Groups", href: "/profile/groups", icon: Layers },
-  { title: "Categories", href: "/profile/categories", icon: Grid2x2 },
-  { title: "Units", href: "/profile/units", icon: Box },
-  { title: "Storeplace", href: "/profile/storeplaces", icon: Store },
+  { title: "Groups", href: "/group-management", icon: Layers },
+  { title: "Categories", href: "/category-management", icon: Grid2x2 },
+  { title: "Units", href: "/units-management", icon: Box },
+  { title: "Storeplace", href: "/storeplace-management", icon: Store },
 ];
 
 const chartConfig = {
@@ -81,25 +83,31 @@ function toISODate(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
-function getLastNDays(n: number) {
-  const today = new Date();
+function getLastNDays(n: number, reference: Date) {
   return Array.from({ length: n }, (_, i) => {
-    const d = new Date(today);
-    d.setDate(today.getDate() - (n - 1 - i));
+    const d = new Date(reference);
+    d.setDate(reference.getDate() - (n - 1 - i));
     return d;
   });
 }
 
-function getGreeting() {
-  const hour = new Date().getHours();
+function getGreeting(reference: Date) {
+  const hour = reference.getHours();
   if (hour < 12) return "Good Morning";
   if (hour < 17) return "Good Afternoon";
   return "Good Evening";
 }
 
 export default function DashboardPage() {
-  const days = getLastNDays(7);
-  const todayIso = toISODate(new Date());
+  // `new Date()` differs between the server render and the client render,
+  // so all "today"-dependent values are computed after mount to avoid a
+  // hydration mismatch — the first client render matches the server's
+  // static placeholder, then swaps in the real values.
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => setNow(new Date()), []);
+
+  const days = now ? getLastNDays(7, now) : [];
+  const todayIso = now ? toISODate(now) : "";
 
   const unitMovementData = days.map((d) => {
     const iso = toISODate(d);
@@ -128,7 +136,10 @@ export default function DashboardPage() {
 
   return (
     <>
-      <SiteHeader title="Dashboard" description={`${getGreeting()} KISHANKC`} />
+      <SiteHeader
+        title="Dashboard"
+        description={now ? `${getGreeting(now)} KISHANKC` : "KISHANKC"}
+      />
       <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           {stats.map((stat) => {
@@ -188,27 +199,31 @@ export default function DashboardPage() {
             <Badge variant="outline">Last 7 Days</Badge>
           </CardHeader>
           <CardContent>
-            <ChartContainer config={chartConfig} className="h-64 w-full">
-              <AreaChart data={unitMovementData} margin={{ left: -20 }}>
-                <CartesianGrid vertical={false} strokeDasharray="4 4" />
-                <XAxis
-                  dataKey="label"
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={8}
-                />
-                <YAxis tickLine={false} axisLine={false} width={40} />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Area
-                  dataKey="units"
-                  type="monotone"
-                  fill="var(--color-units)"
-                  fillOpacity={0.15}
-                  stroke="var(--color-units)"
-                  strokeWidth={2}
-                />
-              </AreaChart>
-            </ChartContainer>
+            {now ? (
+              <ChartContainer config={chartConfig} className="h-64 w-full">
+                <AreaChart data={unitMovementData} margin={{ left: -20 }}>
+                  <CartesianGrid vertical={false} strokeDasharray="4 4" />
+                  <XAxis
+                    dataKey="label"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                  />
+                  <YAxis tickLine={false} axisLine={false} width={40} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Area
+                    dataKey="units"
+                    type="monotone"
+                    fill="var(--color-units)"
+                    fillOpacity={0.15}
+                    stroke="var(--color-units)"
+                    strokeWidth={2}
+                  />
+                </AreaChart>
+              </ChartContainer>
+            ) : (
+              <Skeleton className="h-64 w-full" />
+            )}
           </CardContent>
         </Card>
 
@@ -224,29 +239,40 @@ export default function DashboardPage() {
             </Link>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-7 gap-2 text-center">
-              {weekDays.map((day) => (
-                <div key={day.iso} className="flex flex-col items-center gap-1.5">
-                  <span className="text-xs text-muted-foreground">
-                    {day.weekday}
-                  </span>
-                  <span
-                    className={cn(
-                      "flex size-9 items-center justify-center rounded-full text-sm font-semibold",
-                      day.isToday && "bg-primary text-primary-foreground"
-                    )}
+            {now ? (
+              <div className="grid grid-cols-7 gap-2 text-center">
+                {weekDays.map((day) => (
+                  <div
+                    key={day.iso}
+                    className="flex flex-col items-center gap-1.5"
                   >
-                    {day.dayNumber}
-                  </span>
-                  <span
-                    className={cn(
-                      "size-1.5 rounded-full",
-                      day.hasActivity ? "bg-destructive" : "bg-transparent"
-                    )}
-                  />
-                </div>
-              ))}
-            </div>
+                    <span className="text-xs text-muted-foreground">
+                      {day.weekday}
+                    </span>
+                    <span
+                      className={cn(
+                        "flex size-9 items-center justify-center rounded-full text-sm font-semibold",
+                        day.isToday && "bg-primary text-primary-foreground"
+                      )}
+                    >
+                      {day.dayNumber}
+                    </span>
+                    <span
+                      className={cn(
+                        "size-1.5 rounded-full",
+                        day.hasActivity ? "bg-destructive" : "bg-transparent"
+                      )}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-7 gap-2">
+                {Array.from({ length: 7 }, (_, i) => (
+                  <Skeleton key={i} className="h-16 w-full" />
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 

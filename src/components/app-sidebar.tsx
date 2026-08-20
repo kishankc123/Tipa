@@ -40,18 +40,18 @@ const mainNav = [
 ];
 
 const managementNav = [
-  { title: "Edit Profile", url: "/profile/edit", icon: UserCog },
-  { title: "Group Management", url: "/profile/groups", icon: Layers },
-  { title: "Category Management", url: "/profile/categories", icon: Grid2x2 },
-  { title: "Units Management", url: "/profile/units", icon: Box },
-  { title: "Storeplace Management", url: "/profile/storeplaces", icon: Store },
-  { title: "Team Members", url: "/profile/team", icon: Users },
-  { title: "Log Alerts", url: "/profile/log-alerts", icon: BellRing },
+  { title: "Edit Profile", url: "/edit-profile", icon: UserCog },
+  { title: "Group Management", url: "/group-management", icon: Layers },
+  { title: "Category Management", url: "/category-management", icon: Grid2x2 },
+  { title: "Units Management", url: "/units-management", icon: Box },
+  { title: "Storeplace Management", url: "/storeplace-management", icon: Store },
+  { title: "Team Members", url: "/team-members", icon: Users },
+  { title: "Log Alerts", url: "/log-alerts", icon: BellRing },
 ];
 
 const supportNav = [
-  { title: "Tutorials", url: "/profile/tutorials", icon: PlayCircle },
-  { title: "Contact Us", url: "/profile/contact", icon: Mail },
+  { title: "Tutorials", url: "/tutorials", icon: PlayCircle },
+  { title: "Contact Us", url: "/contact-us", icon: Mail },
 ];
 
 export function AppSidebar() {

@@ -20,16 +20,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { dashboardSummary } from "@/lib/mock-data";
 
 const links = [
-  { title: "Edit Profile", href: "/profile/edit", icon: User },
-  { title: "Group Management", href: "/profile/groups", icon: Layers },
-  { title: "Category Management", href: "/profile/categories", icon: Grid2x2 },
-  { title: "Storeplace Management", href: "/profile/storeplaces", icon: Store },
-  { title: "Units Management", href: "/profile/units", icon: Box },
+  { title: "Edit Profile", href: "/edit-profile", icon: User },
+  { title: "Group Management", href: "/group-management", icon: Layers },
+  { title: "Category Management", href: "/category-management", icon: Grid2x2 },
+  { title: "Storeplace Management", href: "/storeplace-management", icon: Store },
+  { title: "Units Management", href: "/units-management", icon: Box },
   { title: "Logs Management", href: "/logs", icon: ClipboardList },
-  { title: "Team Members", href: "/profile/team", icon: Users },
-  { title: "Log Alerts", href: "/profile/log-alerts", icon: BellRing },
-  { title: "Tutorials", href: "/profile/tutorials", icon: PlayCircle },
-  { title: "Contact Us", href: "/profile/contact", icon: Mail },
+  { title: "Team Members", href: "/team-members", icon: Users },
+  { title: "Log Alerts", href: "/log-alerts", icon: BellRing },
+  { title: "Tutorials", href: "/tutorials", icon: PlayCircle },
+  { title: "Contact Us", href: "/contact-us", icon: Mail },
 ];
 
 export default function ProfilePage() {
