@@ -1,3 +1,5 @@
+import { Pencil } from "lucide-react";
+
 import { SiteHeader } from "@/components/site-header";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -8,15 +10,27 @@ import { Label } from "@/components/ui/label";
 export default function EditProfilePage() {
   return (
     <>
-      <SiteHeader title="Edit Profile" description="Manage your profile and password" />
+      <SiteHeader
+        title="Edit Profile"
+        description="Manage your profile and password"
+        backHref="/profile"
+      />
       <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
         <Card className="bg-secondary text-secondary-foreground">
           <CardContent className="flex flex-col items-center gap-2 pt-6 text-center">
-            <Avatar className="size-16">
-              <AvatarFallback className="bg-primary/20 text-lg font-semibold text-primary">
-                K
-              </AvatarFallback>
-            </Avatar>
+            <div className="relative">
+              <Avatar className="size-16">
+                <AvatarFallback className="bg-primary/20 text-lg font-semibold text-primary">
+                  K
+                </AvatarFallback>
+              </Avatar>
+              <button
+                type="button"
+                className="absolute -right-1 -bottom-1 flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground"
+              >
+                <Pencil className="size-3" />
+              </button>
+            </div>
             <span className="rounded-full bg-primary/20 px-3 py-1 text-xs font-medium text-primary">
               Owner
             </span>

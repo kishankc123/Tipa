@@ -8,6 +8,7 @@ import {
   ClipboardList,
   BarChart3,
   User,
+  UserCog,
   Layers,
   Grid2x2,
   Box,
@@ -39,6 +40,7 @@ const mainNav = [
 ];
 
 const managementNav = [
+  { title: "Edit Profile", url: "/profile/edit", icon: UserCog },
   { title: "Group Management", url: "/profile/groups", icon: Layers },
   { title: "Category Management", url: "/profile/categories", icon: Grid2x2 },
   { title: "Units Management", url: "/profile/units", icon: Box },
