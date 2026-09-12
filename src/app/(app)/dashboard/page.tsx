@@ -35,33 +35,8 @@ import {
 } from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { dashboardSummary, inventoryLogs, products } from "@/lib/mock-data";
-
-const stats = [
-  {
-    title: "Total Inventory Value",
-    value: `Rs ${dashboardSummary.totalInventoryValue.toFixed(2)}`,
-    icon: Wallet,
-  },
-  {
-    title: "Products",
-    value: dashboardSummary.productCount,
-    icon: Package,
-    href: "/products",
-  },
-  {
-    title: "Logs",
-    value: dashboardSummary.logCount,
-    icon: ClipboardList,
-    href: "/logs",
-  },
-  {
-    title: "Team",
-    value: dashboardSummary.teamCount,
-    icon: Users,
-    href: "/team-members",
-  },
-];
+import { getCurrentUser, getDashboardData, listTeamMembers } from "@/lib/api";
+import type { ApiDashboardData } from "@/lib/types";
 
 const quickActions = [
   { title: "Add Product", href: "/products", icon: PackagePlus },
@@ -107,18 +82,45 @@ export default function DashboardPage() {
   // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional client-only hydration guard, see comment above
   useEffect(() => setNow(new Date()), []);
 
+  const [username, setUsername] = useState("");
+  const [teamCount, setTeamCount] = useState(0);
+  const [data, setData] = useState<ApiDashboardData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([getDashboardData(), getCurrentUser(), listTeamMembers()])
+      .then(([dashboard, user, team]) => {
+        if (cancelled) return;
+        setData(dashboard);
+        setUsername(user.username);
+        setTeamCount(team.length);
+      })
+      .catch((err) => {
+        if (!cancelled)
+          setError(err instanceof Error ? err.message : "Failed to load dashboard");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const days = now ? getLastNDays(7, now) : [];
   const todayIso = now ? toISODate(now) : "";
 
+  const chartByDate = new Map(
+    data ? data.qty_chart.labels.map((label, i) => [label, data.qty_chart.values[i]]) : []
+  );
+  const calendarByDate = new Map(
+    data ? data.calendar_summary.results.map((d) => [d.date, d]) : []
+  );
+
   const unitMovementData = days.map((d) => {
     const iso = toISODate(d);
-    const units = inventoryLogs
-      .filter((log) => log.date === iso)
-      .reduce((sum, log) => sum + Math.abs(log.change), 0);
     return {
       date: iso,
       label: d.toLocaleDateString(undefined, { day: "numeric" }),
-      units,
+      units: chartByDate.get(iso) ?? 0,
     };
   });
 
@@ -129,43 +131,81 @@ export default function DashboardPage() {
       weekday: d.toLocaleDateString(undefined, { weekday: "narrow" }),
       dayNumber: d.getDate(),
       isToday: iso === todayIso,
-      hasActivity: inventoryLogs.some((log) => log.date === iso),
+      hasActivity: calendarByDate.get(iso)?.has_inventory_log ?? false,
     };
   });
 
-  const pinnedProducts = products.filter((p) => p.pinned);
+  const stats = data
+    ? [
+        {
+          title: "Total Inventory Value",
+          value: `Rs ${data.stats.total_price_valuation.toFixed(2)}`,
+          icon: Wallet,
+        },
+        {
+          title: "Products",
+          value: data.stats.total_products,
+          icon: Package,
+          href: "/products",
+        },
+        {
+          title: "Logs",
+          value: data.stats.total_logs,
+          icon: ClipboardList,
+          href: "/logs",
+        },
+        {
+          title: "Team",
+          value: teamCount,
+          icon: Users,
+          href: "/team-members",
+        },
+      ]
+    : [];
+
+  const pinnedProducts = data?.pinned_products ?? [];
 
   return (
     <>
       <SiteHeader
         title="Dashboard"
-        description={now ? `${getGreeting(now)} KISHANKC` : "KISHANKC"}
+        description={now ? `${getGreeting(now)} ${username.toUpperCase()}` : ""}
       />
       <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          {stats.map((stat) => {
-            const content = (
-              <Card key={stat.title} className="h-full">
-                <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    {stat.title}
-                  </CardTitle>
-                  <stat.icon className="size-4 text-primary" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stat.value}</div>
-                </CardContent>
-              </Card>
-            );
-            return stat.href ? (
-              <Link key={stat.title} href={stat.href} className="block">
-                {content}
-              </Link>
-            ) : (
-              content
-            );
-          })}
-        </div>
+        {error ? (
+          <p className="text-sm text-destructive">{error}</p>
+        ) : !data ? (
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            {Array.from({ length: 4 }, (_, i) => (
+              <Skeleton key={i} className="h-24 w-full" />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            {stats.map((stat) => {
+              const content = (
+                <Card key={stat.title} className="h-full">
+                  <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      {stat.title}
+                    </CardTitle>
+                    <stat.icon className="size-4 text-primary" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{stat.value}</div>
+                  </CardContent>
+                </Card>
+              );
+              return stat.href ? (
+                <Link key={stat.title} href={stat.href} className="block">
+                  {content}
+                </Link>
+              ) : (
+                content
+              );
+            })}
+          </div>
+        )}
 
         <Card>
           <CardHeader>
@@ -200,7 +240,7 @@ export default function DashboardPage() {
             <Badge variant="outline">Last 7 Days</Badge>
           </CardHeader>
           <CardContent>
-            {now ? (
+            {now && data ? (
               <ChartContainer config={chartConfig} className="h-64 w-full">
                 <AreaChart data={unitMovementData} margin={{ left: -20 }}>
                   <CartesianGrid vertical={false} strokeDasharray="4 4" />
@@ -240,7 +280,7 @@ export default function DashboardPage() {
             </Link>
           </CardHeader>
           <CardContent>
-            {now ? (
+            {now && data ? (
               <div className="grid grid-cols-7 gap-2 text-center">
                 {weekDays.map((day) => (
                   <div
@@ -299,8 +339,8 @@ export default function DashboardPage() {
               <div className="space-y-3">
                 {pinnedProducts.map((product) => (
                   <Link
-                    key={product.id}
-                    href={`/products/${product.id}`}
+                    key={product.slug}
+                    href={`/products/${product.slug}`}
                     className="flex items-center justify-between rounded-lg border p-3 transition-colors hover:bg-accent"
                   >
                     <div className="flex items-center gap-3">
@@ -310,7 +350,8 @@ export default function DashboardPage() {
                       <div>
                         <p className="text-sm font-medium">{product.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          Rs {product.price.toFixed(2)} · Stock {product.stock}
+                          Rs {Number(product.selling_price || 0).toFixed(2)} · Stock{" "}
+                          {Number(product.stock)}
                         </p>
                       </div>
                     </div>

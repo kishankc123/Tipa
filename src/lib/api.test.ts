@@ -472,11 +472,129 @@ describe("profile (real API)", () => {
   });
 });
 
-describe("logs", () => {
-  it("exportLogs resolves with a download url and the current log count", async () => {
+describe("dashboard, logs & reports (real API)", () => {
+  beforeEach(() => {
+    setTokens({ access: "test-access-token", refresh: "test-refresh-token" });
+  });
+
+  afterEach(() => {
+    clearTokens();
+    vi.unstubAllGlobals();
+  });
+
+  it("getDashboardData fetches the dashboard endpoint as-is", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        stats: { total_products: 1, total_logs: 1, total_pinned_products: 0, total_price_valuation: 100 },
+        pinned_products: [],
+        calendar_summary: { from_date: "2026-01-01", to_date: "2026-01-31", results: [] },
+        qty_chart: { from_date: "2026-01-01", to_date: "2026-01-31", labels: [], values: [], total: 0 },
+        recent_logs: [],
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const data = await api.getDashboardData();
+
+    expect(data.stats.total_products).toBe(1);
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      `${API_BASE_URL}/api/system/inventory-logs/dashboard/`
+    );
+  });
+
+  it("listLogsByDay maps from/to to start_date/end_date query params", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ count: 1, next: null, previous: null, results: [{ date: "2026-01-01", count: 2, redo_count: 0, total_stock: 10 }] })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const rows = await api.listLogsByDay({ from: "2026-01-01", to: "2026-01-31" });
+
+    expect(rows).toEqual([{ date: "2026-01-01", count: 2, redo_count: 0, total_stock: 10 }]);
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      `${API_BASE_URL}/api/system/inventory-logs/by-day/?start_date=2026-01-01&end_date=2026-01-31`
+    );
+  });
+
+  it("getProductLogHistory queries by-product with the product slug", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ count: 1, next: null, previous: null, results: [{ id: 1, logged_stock: 5 }] })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const history = await api.getProductLogHistory("widget");
+
+    expect(history).toEqual([{ id: 1, logged_stock: 5 }]);
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      `${API_BASE_URL}/api/system/inventory-logs/by-product/?product=widget`
+    );
+  });
+
+  it("getValuationReport paginates and returns the response's total_value", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          count: 2,
+          next: `${API_BASE_URL}/api/system/products/valuation-report/?page=2`,
+          previous: null,
+          results: [{ product_id: 1, product_name: "A" }],
+          date: "2026-01-01",
+          total_value: 500,
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          count: 2,
+          next: null,
+          previous: null,
+          results: [{ product_id: 2, product_name: "B" }],
+          date: "2026-01-01",
+          total_value: 500,
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { rows, totalValue } = await api.getValuationReport();
+
+    expect(rows.map((r) => r.product_name)).toEqual(["A", "B"]);
+    expect(totalValue).toBe(500);
+  });
+
+  it("exportLogs posts from_date/to_date and resolves with a blob and filename", async () => {
+    const fakeBlob = new Blob(["xlsx-bytes"]);
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      blob: async () => fakeBlob,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
     const result = await api.exportLogs({ from: "2026-01-01", to: "2026-01-31" });
-    expect(result.url).toBe("/api/logs/export/download");
-    expect(typeof result.count).toBe("number");
+
+    expect(result.blob).toBe(fakeBlob);
+    expect(result.filename).toBe("inventory-logs_2026-01-01_to_2026-01-31.xlsx");
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toBe(`${API_BASE_URL}/api/system/inventory-logs/export/`);
+    expect(JSON.parse(options.body)).toEqual({
+      from_date: "2026-01-01",
+      to_date: "2026-01-31",
+    });
+  });
+
+  it("exportLogs throws the server's error message on failure", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        json: async () => ({ detail: "Invalid date range." }),
+      })
+    );
+
+    await expect(
+      api.exportLogs({ from: "2026-01-31", to: "2026-01-01" })
+    ).rejects.toThrow("Invalid date range.");
   });
 });
 

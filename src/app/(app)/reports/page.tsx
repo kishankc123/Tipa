@@ -1,9 +1,12 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { BarChart3, ChevronRight, Package } from "lucide-react";
 
 import { SiteHeader } from "@/components/site-header";
 import { Card, CardContent } from "@/components/ui/card";
-import { dashboardSummary } from "@/lib/mock-data";
+import { getDashboardData } from "@/lib/api";
 
 const reports = [
   {
@@ -21,6 +24,22 @@ const reports = [
 ];
 
 export default function ReportsPage() {
+  const [totalValue, setTotalValue] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getDashboardData()
+      .then((data) => {
+        if (!cancelled) setTotalValue(data.stats.total_price_valuation);
+      })
+      .catch(() => {
+        // Non-fatal: the card just shows a placeholder below.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <>
       <SiteHeader title="Reports" description="Inventory insights" />
@@ -31,7 +50,7 @@ export default function ReportsPage() {
               Total Inventory Value
             </p>
             <p className="mt-1 text-3xl font-bold">
-              Rs {dashboardSummary.totalInventoryValue.toFixed(2)}
+              Rs {totalValue !== null ? totalValue.toFixed(2) : "—"}
             </p>
           </CardContent>
         </Card>

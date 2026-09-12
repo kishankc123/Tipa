@@ -174,3 +174,77 @@ export interface ApiWhoami {
   address: string | null;
   profile_image: string | null;
 }
+
+// ---------------------------------------------------------------------
+// Dashboard / Reports / Logs (real API — see src/lib/api.ts). The
+// OpenAPI spec's response schemas for these endpoints are wrong (the
+// dashboard endpoint is documented as returning InventoryLogCreate);
+// these shapes come from calling the live endpoints directly.
+// ---------------------------------------------------------------------
+
+export interface ApiInventoryLog {
+  id: number;
+  product: ApiProduct;
+  storage_place: ApiStoragePlace | null;
+  logged_stock: number;
+  logged_at: string | null;
+  review_status: string;
+  is_approved: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ApiDashboardData {
+  stats: {
+    total_products: number;
+    total_logs: number;
+    total_pinned_products: number;
+    total_price_valuation: number;
+  };
+  pinned_products: ApiProduct[];
+  calendar_summary: {
+    from_date: string;
+    to_date: string;
+    results: {
+      date: string;
+      has_inventory_log: boolean;
+      log_count: number;
+    }[];
+  };
+  qty_chart: {
+    from_date: string;
+    to_date: string;
+    labels: string[];
+    values: number[];
+    total: number;
+  };
+  recent_logs: ApiInventoryLog[];
+}
+
+export interface ApiLogsByDay {
+  date: string;
+  count: number;
+  redo_count: number;
+  total_stock: number;
+}
+
+export interface ApiValuationRow {
+  product_id: number;
+  product: string;
+  product_name: string;
+  unit: string;
+  unit_name: string;
+  rate: number;
+  current_stock: number;
+  current_value: number;
+}
+
+export interface ApiProductLogEntry {
+  id: number;
+  logged_stock: number;
+  logged_at: string | null;
+  storage_place: string | null;
+  storage_place_name: string;
+  review_status: string;
+  created_at: string;
+}

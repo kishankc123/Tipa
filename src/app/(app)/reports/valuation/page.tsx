@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Search } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
@@ -15,18 +15,42 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { products } from "@/lib/mock-data";
+import { getValuationReport } from "@/lib/api";
+import type { ApiValuationRow } from "@/lib/types";
 
 export default function InventoryValuationPage() {
   const [query, setQuery] = useState("");
+  const [rows, setRows] = useState<ApiValuationRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return products;
-    return products.filter((p) => p.name.toLowerCase().includes(q));
+  useEffect(() => {
+    let cancelled = false;
+    // Show the loading state immediately when the query changes (before
+    // the debounce timer fires), not just once the fetch itself starts.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoading(true);
+    const timeout = setTimeout(() => {
+      getValuationReport(query || undefined)
+        .then(({ rows: data, totalValue }) => {
+          if (cancelled) return;
+          setRows(data);
+          setTotal(totalValue);
+        })
+        .catch((err) => {
+          if (!cancelled)
+            setError(err instanceof Error ? err.message : "Failed to load valuation report");
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
   }, [query]);
-
-  const total = filtered.reduce((sum, p) => sum + p.price * p.stock, 0);
 
   return (
     <>
@@ -54,7 +78,19 @@ export default function InventoryValuationPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.length === 0 ? (
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="h-32 text-center text-sm text-muted-foreground">
+                      Loading...
+                    </TableCell>
+                  </TableRow>
+                ) : error ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="h-32 text-center text-sm text-destructive">
+                      {error}
+                    </TableCell>
+                  </TableRow>
+                ) : rows.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={4} className="p-0">
                       <EmptyState
@@ -64,19 +100,19 @@ export default function InventoryValuationPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filtered.map((product) => (
-                    <TableRow key={product.id}>
+                  rows.map((row) => (
+                    <TableRow key={row.product_id}>
                       <TableCell className="font-medium">
-                        {product.name}
+                        {row.product_name}
                       </TableCell>
                       <TableCell className="text-right">
-                        {product.stock}
+                        {row.current_stock}
                       </TableCell>
                       <TableCell className="text-right">
-                        Rs {product.price.toFixed(2)}
+                        Rs {row.rate.toFixed(2)}
                       </TableCell>
                       <TableCell className="text-right">
-                        Rs {(product.price * product.stock).toFixed(2)}
+                        Rs {row.current_value.toFixed(2)}
                       </TableCell>
                     </TableRow>
                   ))
@@ -92,7 +128,7 @@ export default function InventoryValuationPage() {
               Total Valuation
             </p>
             <p className="text-xs text-muted-foreground">
-              {filtered.length} shown products
+              {rows.length} shown products
             </p>
           </div>
           <div className="rounded-lg bg-primary px-4 py-2 font-semibold text-primary-foreground">

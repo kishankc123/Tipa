@@ -1,9 +1,8 @@
 # Data Flow
 
-How data moves between the UI and the real IMS API, and which parts of the
-app still run on mock data. Scope of the real integration so far: **auth,
-products, groups/categories/units/storage-places management, team members,
-and profile** (see the table at the bottom).
+How data moves between the UI and the real IMS API. Every page except
+Contact Us (a static support form) is now backed by the real API — see
+the table at the bottom.
 
 ## Layers
 
@@ -86,13 +85,13 @@ Real-API functions in this file: `listProducts`, `getProduct`,
 `createGroup`/`updateGroup`/`toggleGroupStatus` and the matching
 Category/Unit/StorePlace functions (mapped back to the old mock shape —
 see "Mapping real shapes onto the old mock types" below), `listTeamMembers`/
-`createTeamMember`/`setTeamMemberActive`, and `getCurrentUser`/
-`updateProfile`/`changePassword`.
+`createTeamMember`/`setTeamMemberActive`, `getCurrentUser`/`updateProfile`/
+`changePassword`, and `getDashboardData`/`listLogsByDay`/
+`getProductLogHistory`/`getValuationReport`/`exportLogs`.
 
-Only `exportLogs` and `submitContactMessage` still operate on
-[src/lib/mock-data.ts](src/lib/mock-data.ts) — no network call yet
-(Dashboard, Reports, and Logs are the remaining mock areas; see the table
-below).
+Only `submitContactMessage` (Contact Us page) still operates on
+[src/lib/mock-data.ts](src/lib/mock-data.ts) — no network call. Every
+other page in the app is now backed by the real API.
 
 #### Mapping real shapes onto the old mock types
 
@@ -183,6 +182,28 @@ AddProductPage (src/app/(app)/products/new/page.tsx)
     3. router.push(`/products/${product.slug}`)
 ```
 
+## Sequence: loading the Dashboard
+
+```
+DashboardPage (src/app/(app)/dashboard/page.tsx)
+  useEffect → Promise.all([
+    api.getDashboardData(),   → GET /api/system/inventory-logs/dashboard/
+    api.getCurrentUser(),     → GET /api/system/auth/whoami/     (for the greeting)
+    api.listTeamMembers(),    → GET /api/system/team-members/    (for the Team stat)
+  ])
+  → one dashboard response bundles: stats (products/logs/valuation),
+    this-month calendar activity, a daily quantity chart, and pinned
+    products — the page slices "last 7 days" out of the month-wide
+    calendar/chart data client-side, by date-string lookup
+  → setData(...) → stat cards, area chart, week strip, and pinned list render
+```
+
+This is the one page in the app that reaches for a single "give me
+everything" endpoint rather than composing several focused ones — the
+real API happens to shape it that way, so `getDashboardData()` returns
+that bundle mostly as-is instead of being decomposed into per-widget
+functions.
+
 ## What's real vs. mock, right now
 
 | Area | Status | Files |
@@ -192,12 +213,13 @@ AddProductPage (src/app/(app)/products/new/page.tsx)
 | Group/Category/Unit/Storage-Place management (create/edit/toggle) | **Real API** | `src/app/(app)/{group,category,units,storeplace}-management/`, mapped functions in `src/lib/api.ts` |
 | Team Members (list/create/activate/deactivate) | **Real API** | `src/app/(app)/team-members/page.tsx` |
 | Profile / Edit Profile (view + update username/contact/business name + change password) | **Real API** | `src/app/(app)/profile/page.tsx`, `src/app/(app)/edit-profile/page.tsx` |
-| Dashboard, Reports, Logs | Mock data | `src/app/(app)/dashboard/`, `src/app/(app)/reports/`, `src/app/(app)/logs/` |
+| Dashboard (stats, chart, week strip, pinned products) | **Real API** | `src/app/(app)/dashboard/page.tsx` |
+| Logs (grouped by day + XLSX export) | **Real API** | `src/app/(app)/logs/page.tsx` |
+| Reports (index, product-wise, valuation) | **Real API** | `src/app/(app)/reports/*` |
+| Contact Us | Mock data (fire-and-forget, no real endpoint used) | `src/app/(app)/contact-us/page.tsx` |
+| Log Alerts, Tutorials | Static content, no data to fetch | `src/app/(app)/log-alerts/`, `src/app/(app)/tutorials/` |
 
-Dashboard/Reports/Logs are the only areas left on mock data — they need
-the analytics-shaped endpoints (`/inventory-logs/dashboard/`,
-`/inventory-logs/by-day/`, `/products/valuation-report/`, etc.), which is
-meaningfully more work than the CRUD pages above and wasn't in scope yet.
+Contact Us is the only page left on mock data.
 
 ## Real-API quirks discovered by testing (not from the spec)
 
@@ -232,6 +254,19 @@ making real requests, not by reading docs:
 - `CategoryRequest` has both a `name` and a `title` field; the real
   backend behavior around the distinction is unclear, so `createCategory`/
   `updateCategory` just send the same value for both.
+- `GET /inventory-logs/dashboard/` is documented as returning
+  `InventoryLogCreate`; it actually returns a large bundle
+  (`{stats, pinned_products, calendar_summary, qty_chart,
+  low_stock_products, recent_logs}`) — see `ApiDashboardData` in
+  `src/lib/types.ts` for the shape actually used.
+- `GET /products/valuation-report/` is documented as returning a plain
+  `Product`; it's actually paginated (`{count, results, next, previous}`)
+  **plus** two extra top-level fields, `date` and `total_value` (the
+  grand total across all pages, not just the current one) — that's why
+  `getValuationReport()` can't reuse the generic `fetchAllPages` helper.
+- `POST /inventory-logs/export/` requires both `from_date` and `to_date`
+  (no optional range) and returns the XLSX file's bytes directly, not
+  JSON — `exportLogs()` bypasses `apiFetch` entirely and reads a `Blob`.
 
 ## Extending this pattern to another resource
 

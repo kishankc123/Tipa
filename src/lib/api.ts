@@ -1,12 +1,15 @@
-import { inventoryLogs } from "@/lib/mock-data";
 import type {
   ApiCategory,
+  ApiDashboardData,
   ApiGroup,
+  ApiLogsByDay,
   ApiProduct,
+  ApiProductLogEntry,
   ApiStoragePlace,
   ApiTeam,
   ApiTeamMember,
   ApiUnit,
+  ApiValuationRow,
   ApiWhoami,
   Category,
   EntityStatus,
@@ -16,7 +19,9 @@ import type {
   TeamMemberRoleEnum,
   Unit,
 } from "@/lib/types";
-import { apiFetch } from "@/lib/api-client";
+import { apiFetch, extractErrorMessage } from "@/lib/api-client";
+import { getAccessToken } from "@/lib/auth";
+import { API_BASE_URL } from "@/lib/config";
 
 /**
  * Dummy in-memory "backend" so every action button in the app is fully
@@ -523,15 +528,94 @@ export async function changePassword(
 }
 
 // ---------------------------------------------------------------------
-// Logs
+// Dashboard, Logs & Reports (real API)
 // ---------------------------------------------------------------------
 
-/** GET /api/logs/export/?from={from}&to={to} */
-export async function exportLogs(_range: {
+/**
+ * GET /api/system/inventory-logs/dashboard/ — one call that bundles
+ * everything the Dashboard page needs (stats, this-month calendar
+ * activity, a daily quantity chart, and pinned products). The OpenAPI
+ * spec claims this returns an InventoryLogCreate; it actually returns
+ * the shape in ApiDashboardData, verified against the live API.
+ */
+export async function getDashboardData(): Promise<ApiDashboardData> {
+  return apiFetch("/api/system/inventory-logs/dashboard/");
+}
+
+/** GET /api/system/inventory-logs/by-day/ */
+export async function listLogsByDay(range?: {
   from?: string;
   to?: string;
-}): Promise<{ url: string; count: number }> {
-  return delay({ url: "/api/logs/export/download", count: inventoryLogs.length });
+}): Promise<ApiLogsByDay[]> {
+  const query = new URLSearchParams();
+  if (range?.from) query.set("start_date", range.from);
+  if (range?.to) query.set("end_date", range.to);
+  const qs = query.toString();
+  return fetchAllPages<ApiLogsByDay>(
+    `/api/system/inventory-logs/by-day/${qs ? `?${qs}` : ""}`
+  );
+}
+
+/** GET /api/system/inventory-logs/by-product/?product={slug} */
+export async function getProductLogHistory(
+  productSlug: string
+): Promise<ApiProductLogEntry[]> {
+  return fetchAllPages<ApiProductLogEntry>(
+    `/api/system/inventory-logs/by-product/?product=${encodeURIComponent(productSlug)}`
+  );
+}
+
+/**
+ * GET /api/system/products/valuation-report/ — paginated like the other
+ * list endpoints, but the page envelope also carries `total_value` (the
+ * grand total across *all* pages, not just the current one) alongside
+ * the usual count/results/next/previous, so this can't reuse
+ * fetchAllPages unmodified.
+ */
+export async function getValuationReport(
+  search?: string
+): Promise<{ rows: ApiValuationRow[]; totalValue: number }> {
+  const qs = search ? `?search=${encodeURIComponent(search)}` : "";
+  const rows: ApiValuationRow[] = [];
+  let path: string | null = `/api/system/products/valuation-report/${qs}`;
+  let totalValue = 0;
+
+  while (path) {
+    const page: PaginatedResponse<ApiValuationRow> & { total_value: number } =
+      await apiFetch(path);
+    rows.push(...page.results);
+    totalValue = page.total_value;
+    path = page.next ? page.next.replace(/^https?:\/\/[^/]+/, "") : null;
+  }
+
+  return { rows, totalValue };
+}
+
+/**
+ * POST /api/system/inventory-logs/export/ — returns an XLSX file
+ * directly (not JSON), so this bypasses apiFetch and reads a Blob.
+ */
+export async function exportLogs(range: {
+  from: string;
+  to: string;
+}): Promise<{ blob: Blob; filename: string }> {
+  const token = getAccessToken();
+  const res = await fetch(`${API_BASE_URL}/api/system/inventory-logs/export/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ from_date: range.from, to_date: range.to }),
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(extractErrorMessage(body, "Failed to export logs."));
+  }
+
+  const blob = await res.blob();
+  return { blob, filename: `inventory-logs_${range.from}_to_${range.to}.xlsx` };
 }
 
 // ---------------------------------------------------------------------
