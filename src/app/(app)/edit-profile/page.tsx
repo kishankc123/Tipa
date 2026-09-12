@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import { Pencil } from "lucide-react";
 
 import { SiteHeader } from "@/components/site-header";
@@ -6,8 +9,37 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { changePassword, updateProfile } from "@/lib/api";
 
 export default function EditProfilePage() {
+  const [username, setUsername] = useState("Kishankc");
+  const [contact, setContact] = useState("1234567891");
+  const [company, setCompany] = useState("General Store");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSavedMessage(null);
+    try {
+      await updateProfile({
+        username,
+        contactNumber: contact,
+        companyName: company,
+      });
+      if (currentPassword && newPassword) {
+        await changePassword({ currentPassword, newPassword });
+        setCurrentPassword("");
+        setNewPassword("");
+      }
+      setSavedMessage("Profile updated.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <>
       <SiteHeader
@@ -44,15 +76,27 @@ export default function EditProfilePage() {
           <CardContent className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="username">Username</Label>
-              <Input id="username" defaultValue="Kishankc" />
+              <Input
+                id="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="contact">Contact Number</Label>
-              <Input id="contact" defaultValue="1234567891" />
+              <Input
+                id="contact"
+                value={contact}
+                onChange={(e) => setContact(e.target.value)}
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="company">Company Name</Label>
-              <Input id="company" defaultValue="General Store" />
+              <Input
+                id="company"
+                value={company}
+                onChange={(e) => setCompany(e.target.value)}
+              />
             </div>
           </CardContent>
         </Card>
@@ -67,13 +111,30 @@ export default function EditProfilePage() {
           <CardContent className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="current-password">Current Password</Label>
-              <Input id="current-password" type="password" placeholder="Enter current password" />
+              <Input
+                id="current-password"
+                type="password"
+                placeholder="Enter current password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="new-password">New Password</Label>
-              <Input id="new-password" type="password" placeholder="Enter new password" />
+              <Input
+                id="new-password"
+                type="password"
+                placeholder="Enter new password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+              />
             </div>
-            <Button className="w-full">Save Changes</Button>
+            {savedMessage ? (
+              <p className="text-xs text-primary">{savedMessage}</p>
+            ) : null}
+            <Button className="w-full" onClick={handleSave} disabled={saving}>
+              {saving ? "Saving..." : "Save Changes"}
+            </Button>
           </CardContent>
         </Card>
       </div>

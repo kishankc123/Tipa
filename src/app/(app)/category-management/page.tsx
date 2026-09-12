@@ -3,6 +3,7 @@
 import { Grid2x2 } from "lucide-react";
 
 import { ManagementList } from "@/components/management-list";
+import { createCategory, toggleCategoryStatus, updateCategory } from "@/lib/api";
 import { categories } from "@/lib/mock-data";
 
 export default function CategoriesPage() {
@@ -16,6 +17,9 @@ export default function CategoriesPage() {
       searchPlaceholder="Search Category..."
       emptyTitle="No Categories Yet"
       emptyDescription="Add a category to get started."
+      createEntity={createCategory}
+      updateEntity={updateCategory}
+      toggleEntityStatus={toggleCategoryStatus}
     />
   );
 }

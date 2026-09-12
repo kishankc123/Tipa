@@ -34,7 +34,7 @@ interface NamedEntity {
   status: EntityStatus;
 }
 
-export function ManagementList({
+export function ManagementList<T extends NamedEntity>({
   title,
   description,
   entityLabel,
@@ -43,22 +43,37 @@ export function ManagementList({
   searchPlaceholder,
   emptyTitle,
   emptyDescription,
+  createEntity,
+  updateEntity,
+  toggleEntityStatus,
 }: {
   title: string;
   description: string;
   entityLabel: string;
-  items: NamedEntity[];
+  items: T[];
   icon: LucideIcon;
   searchPlaceholder: string;
   emptyTitle: string;
   emptyDescription: string;
+  createEntity: (name: string, status: EntityStatus) => Promise<T>;
+  updateEntity: (
+    id: string,
+    patch: { name?: string; status?: EntityStatus }
+  ) => Promise<T>;
+  toggleEntityStatus: (id: string) => Promise<T>;
 }) {
-  const [entities, setEntities] = useState(items);
+  // Clone on init: `items` is the same array reference the dummy API
+  // mutates directly (see src/lib/api.ts), so state must own a separate
+  // copy or a create/update would be double-applied — once by the API's
+  // in-place mutation, once by this component's optimistic state update.
+  const [entities, setEntities] = useState(() => [...items]);
   const [query, setQuery] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [name, setName] = useState("");
   const [active, setActive] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -73,46 +88,49 @@ export function ManagementList({
     setSheetOpen(true);
   };
 
-  const openEdit = (item: NamedEntity) => {
+  const openEdit = (item: T) => {
     setEditingId(item.id);
     setName(item.name);
     setActive(item.status === "active");
     setSheetOpen(true);
   };
 
-  const toggleStatus = (id: string) => {
-    setEntities((rows) =>
-      rows.map((row) =>
-        row.id === id
-          ? { ...row, status: row.status === "active" ? "inactive" : "active" }
-          : row
-      )
-    );
+  const handleToggleStatus = async (id: string) => {
+    setTogglingId(id);
+    try {
+      const updated = await toggleEntityStatus(id);
+      setEntities((rows) =>
+        rows.map((row) => (row.id === id ? updated : row))
+      );
+    } finally {
+      setTogglingId(null);
+    }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const trimmed = name.trim();
     if (!trimmed) return;
-
-    if (editingId) {
-      setEntities((rows) =>
-        rows.map((row) =>
-          row.id === editingId
-            ? { ...row, name: trimmed, status: active ? "active" : "inactive" }
-            : row
-        )
-      );
-    } else {
-      setEntities((rows) => [
-        ...rows,
-        {
-          id: `${Date.now()}`,
+    setSaving(true);
+    try {
+      if (editingId) {
+        const updated = await updateEntity(editingId, {
           name: trimmed,
           status: active ? "active" : "inactive",
-        },
-      ]);
+        });
+        setEntities((rows) =>
+          rows.map((row) => (row.id === editingId ? updated : row))
+        );
+      } else {
+        const created = await createEntity(
+          trimmed,
+          active ? "active" : "inactive"
+        );
+        setEntities((rows) => [...rows, created]);
+      }
+      setSheetOpen(false);
+    } finally {
+      setSaving(false);
     }
-    setSheetOpen(false);
   };
 
   return (
@@ -178,7 +196,8 @@ export function ManagementList({
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           variant="destructive"
-                          onClick={() => toggleStatus(item.id)}
+                          disabled={togglingId === item.id}
+                          onClick={() => handleToggleStatus(item.id)}
                         >
                           {item.status === "active" ? "Inactive" : "Activate"}
                         </DropdownMenuItem>
@@ -226,8 +245,8 @@ export function ManagementList({
             </div>
           </div>
           <SheetFooter>
-            <Button onClick={handleSave} disabled={!name.trim()}>
-              {editingId ? "Save Changes" : "Add"}
+            <Button onClick={handleSave} disabled={!name.trim() || saving}>
+              {saving ? "Saving..." : editingId ? "Save Changes" : "Add"}
             </Button>
           </SheetFooter>
         </SheetContent>

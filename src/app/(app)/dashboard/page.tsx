@@ -104,6 +104,7 @@ export default function DashboardPage() {
   // hydration mismatch — the first client render matches the server's
   // static placeholder, then swaps in the real values.
   const [now, setNow] = useState<Date | null>(null);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional client-only hydration guard, see comment above
   useEffect(() => setNow(new Date()), []);
 
   const days = now ? getLastNDays(7, now) : [];

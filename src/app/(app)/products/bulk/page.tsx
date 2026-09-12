@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import { ChevronRight, Download, Info, Upload } from "lucide-react";
 
 import { SiteHeader } from "@/components/site-header";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { bulkImportProducts, getBulkImportTemplateUrl } from "@/lib/api";
 
 const notes = [
   "Excel should follow the proper format",
@@ -19,10 +21,32 @@ const notes = [
 export default function AddBulkProductPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [fileName, setFileName] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [fetchingTemplate, setFetchingTemplate] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleUpload = () => {
-    router.push("/products");
+  const handleUpload = async () => {
+    if (!file) return;
+    setError(null);
+    setUploading(true);
+    try {
+      await bulkImportProducts(file);
+      router.push("/products");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDownloadTemplate = async () => {
+    setFetchingTemplate(true);
+    try {
+      await getBulkImportTemplateUrl();
+    } finally {
+      setFetchingTemplate(false);
+    }
   };
 
   return (
@@ -33,6 +57,11 @@ export default function AddBulkProductPage() {
         backHref="/products"
       />
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 p-4 md:p-6">
+        {error ? (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : null}
         <Card>
           <CardContent className="pt-6">
             <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-8 text-center">
@@ -41,7 +70,7 @@ export default function AddBulkProductPage() {
               </div>
               <div>
                 <p className="text-sm font-semibold">
-                  {fileName ?? "Choose Excel File"}
+                  {file?.name ?? "Choose Excel File"}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   Only .xls and .xlsx files supported
@@ -58,22 +87,29 @@ export default function AddBulkProductPage() {
                 type="file"
                 accept=".xls,.xlsx"
                 className="hidden"
-                onChange={(e) => setFileName(e.target.files?.[0]?.name ?? null)}
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
               />
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="flex items-center gap-3 pt-6">
+          <button
+            type="button"
+            onClick={handleDownloadTemplate}
+            disabled={fetchingTemplate}
+            className="flex w-full items-center gap-3 p-6 text-left disabled:opacity-60"
+          >
             <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/20 text-primary">
               <Download className="size-4" />
             </div>
             <p className="flex-1 text-sm font-medium">
-              Download Sample Excel Template
+              {fetchingTemplate
+                ? "Preparing template..."
+                : "Download Sample Excel Template"}
             </p>
             <ChevronRight className="size-4 text-muted-foreground" />
-          </CardContent>
+          </button>
         </Card>
 
         <Card>
@@ -97,8 +133,8 @@ export default function AddBulkProductPage() {
         </Card>
 
         <div className="flex flex-col gap-2">
-          <Button onClick={handleUpload} disabled={!fileName}>
-            Upload Products
+          <Button onClick={handleUpload} disabled={!file || uploading}>
+            {uploading ? "Uploading..." : "Upload Products"}
           </Button>
           <Button variant="outline" onClick={() => router.push("/products")}>
             Cancel

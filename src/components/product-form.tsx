@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ImagePlus, Plus, Store, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -22,32 +22,40 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { categories, groups, storePlaces, units } from "@/lib/mock-data";
+import {
+  listApiCategories,
+  listApiGroups,
+  listApiStoragePlaces,
+  listApiUnits,
+} from "@/lib/api";
+import type { ApiCategory, ApiGroup, ApiStoragePlace, ApiUnit } from "@/lib/types";
 
 export interface ProductFormValues {
   name: string;
-  groupId: string;
-  categoryId: string;
-  unitId: string;
-  price: string;
+  groupSlug: string;
+  categorySlug: string;
+  unitSlug: string;
+  costPrice: string;
+  sellingPrice: string;
   active: boolean;
   pinned: boolean;
   description: string;
   trackInventory: boolean;
-  stockRows: { storePlaceId: string; quantity: string }[];
+  stockRows: { storagePlaceSlug: string; quantity: string }[];
 }
 
 export const emptyProductFormValues: ProductFormValues = {
   name: "",
-  groupId: "",
-  categoryId: "",
-  unitId: "",
-  price: "",
+  groupSlug: "",
+  categorySlug: "",
+  unitSlug: "",
+  costPrice: "",
+  sellingPrice: "",
   active: true,
   pinned: false,
   description: "",
   trackInventory: true,
-  stockRows: [{ storePlaceId: "", quantity: "" }],
+  stockRows: [{ storagePlaceSlug: "", quantity: "" }],
 };
 
 export function ProductForm({
@@ -59,13 +67,15 @@ export function ProductForm({
   defaultValues: ProductFormValues;
   actionLabel: string;
   actionIcon?: typeof Plus;
-  onSubmit: (values: ProductFormValues) => void;
+  onSubmit: (values: ProductFormValues) => Promise<void> | void;
 }) {
+  const [submitting, setSubmitting] = useState(false);
   const [name, setName] = useState(defaultValues.name);
-  const [groupId, setGroupId] = useState(defaultValues.groupId);
-  const [categoryId, setCategoryId] = useState(defaultValues.categoryId);
-  const [unitId, setUnitId] = useState(defaultValues.unitId);
-  const [price, setPrice] = useState(defaultValues.price);
+  const [groupSlug, setGroupSlug] = useState(defaultValues.groupSlug);
+  const [categorySlug, setCategorySlug] = useState(defaultValues.categorySlug);
+  const [unitSlug, setUnitSlug] = useState(defaultValues.unitSlug);
+  const [costPrice, setCostPrice] = useState(defaultValues.costPrice);
+  const [sellingPrice, setSellingPrice] = useState(defaultValues.sellingPrice);
   const [active, setActive] = useState(defaultValues.active);
   const [pinned, setPinned] = useState(defaultValues.pinned);
   const [description, setDescription] = useState(defaultValues.description);
@@ -74,9 +84,38 @@ export function ProductForm({
   );
   const [stockRows, setStockRows] = useState(defaultValues.stockRows);
 
+  const [groups, setGroups] = useState<ApiGroup[]>([]);
+  const [categories, setCategories] = useState<ApiCategory[]>([]);
+  const [units, setUnits] = useState<ApiUnit[]>([]);
+  const [storagePlaces, setStoragePlaces] = useState<ApiStoragePlace[]>([]);
+  const [loadingLookups, setLoadingLookups] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      listApiGroups(),
+      listApiCategories(),
+      listApiUnits(),
+      listApiStoragePlaces(),
+    ])
+      .then(([g, c, u, s]) => {
+        if (cancelled) return;
+        setGroups(g);
+        setCategories(c);
+        setUnits(u);
+        setStoragePlaces(s);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingLookups(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const updateStockRow = (
     index: number,
-    patch: Partial<{ storePlaceId: string; quantity: string }>
+    patch: Partial<{ storagePlaceSlug: string; quantity: string }>
   ) => {
     setStockRows((rows) =>
       rows.map((row, i) => (i === index ? { ...row, ...patch } : row))
@@ -87,28 +126,34 @@ export function ProductForm({
     setStockRows((rows) => rows.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!name.trim()) return;
-    onSubmit({
-      name,
-      groupId,
-      categoryId,
-      unitId,
-      price,
-      active,
-      pinned,
-      description,
-      trackInventory,
-      stockRows,
-    });
+    setSubmitting(true);
+    try {
+      await onSubmit({
+        name,
+        groupSlug,
+        categorySlug,
+        unitSlug,
+        costPrice,
+        sellingPrice,
+        active,
+        pinned,
+        description,
+        trackInventory,
+        stockRows,
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-4 md:p-6">
       <div className="flex justify-end">
-        <Button onClick={handleSubmit} disabled={!name.trim()}>
+        <Button onClick={handleSubmit} disabled={!name.trim() || submitting}>
           {ActionIcon ? <ActionIcon /> : null}
-          {actionLabel}
+          {submitting ? "Saving..." : actionLabel}
         </Button>
       </div>
 
@@ -145,14 +190,20 @@ export function ProductForm({
           </div>
 
           <div className="space-y-1.5">
-            <Label>Group</Label>
-            <Select value={groupId} onValueChange={setGroupId}>
+            <Label>
+              Group <span className="text-destructive">*</span>
+            </Label>
+            <Select value={groupSlug} onValueChange={setGroupSlug}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select group..." />
+                <SelectValue
+                  placeholder={
+                    loadingLookups ? "Loading groups..." : "Select group..."
+                  }
+                />
               </SelectTrigger>
               <SelectContent>
                 {groups.map((group) => (
-                  <SelectItem key={group.id} value={group.id}>
+                  <SelectItem key={group.slug} value={group.slug}>
                     {group.name}
                   </SelectItem>
                 ))}
@@ -161,14 +212,20 @@ export function ProductForm({
           </div>
 
           <div className="space-y-1.5">
-            <Label>Category</Label>
-            <Select value={categoryId} onValueChange={setCategoryId}>
+            <Label>
+              Category <span className="text-destructive">*</span>
+            </Label>
+            <Select value={categorySlug} onValueChange={setCategorySlug}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select category..." />
+                <SelectValue
+                  placeholder={
+                    loadingLookups ? "Loading categories..." : "Select category..."
+                  }
+                />
               </SelectTrigger>
               <SelectContent>
                 {categories.map((category) => (
-                  <SelectItem key={category.id} value={category.id}>
+                  <SelectItem key={category.slug} value={category.slug}>
                     {category.name}
                   </SelectItem>
                 ))}
@@ -177,14 +234,18 @@ export function ProductForm({
           </div>
 
           <div className="space-y-1.5">
-            <Label>Units</Label>
-            <Select value={unitId} onValueChange={setUnitId}>
+            <Label>
+              Units <span className="text-destructive">*</span>
+            </Label>
+            <Select value={unitSlug} onValueChange={setUnitSlug}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select unit..." />
+                <SelectValue
+                  placeholder={loadingLookups ? "Loading units..." : "Select unit..."}
+                />
               </SelectTrigger>
               <SelectContent>
                 {units.map((unit) => (
-                  <SelectItem key={unit.id} value={unit.id}>
+                  <SelectItem key={unit.slug} value={unit.slug}>
                     {unit.name}
                   </SelectItem>
                 ))}
@@ -192,20 +253,37 @@ export function ProductForm({
             </Select>
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="price">Price</Label>
-            <InputGroup>
-              <InputGroupAddon>
-                <InputGroupText>Rs</InputGroupText>
-              </InputGroupAddon>
-              <InputGroupInput
-                id="price"
-                inputMode="decimal"
-                placeholder="0.00"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-              />
-            </InputGroup>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="cost-price">Cost Price</Label>
+              <InputGroup>
+                <InputGroupAddon>
+                  <InputGroupText>Rs</InputGroupText>
+                </InputGroupAddon>
+                <InputGroupInput
+                  id="cost-price"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={costPrice}
+                  onChange={(e) => setCostPrice(e.target.value)}
+                />
+              </InputGroup>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="selling-price">Selling Price</Label>
+              <InputGroup>
+                <InputGroupAddon>
+                  <InputGroupText>Rs</InputGroupText>
+                </InputGroupAddon>
+                <InputGroupInput
+                  id="selling-price"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={sellingPrice}
+                  onChange={(e) => setSellingPrice(e.target.value)}
+                />
+              </InputGroup>
+            </div>
           </div>
 
           <div className="flex items-center justify-between rounded-lg border px-3 py-2.5">
@@ -259,17 +337,17 @@ export function ProductForm({
                 <div className="flex-1 space-y-1.5">
                   <Label>Store Place</Label>
                   <Select
-                    value={row.storePlaceId}
+                    value={row.storagePlaceSlug}
                     onValueChange={(value) =>
-                      updateStockRow(index, { storePlaceId: value })
+                      updateStockRow(index, { storagePlaceSlug: value })
                     }
                   >
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Select store place" />
                     </SelectTrigger>
                     <SelectContent>
-                      {storePlaces.map((place) => (
-                        <SelectItem key={place.id} value={place.id}>
+                      {storagePlaces.map((place) => (
+                        <SelectItem key={place.slug} value={place.slug}>
                           <Store className="size-4" />
                           {place.name}
                         </SelectItem>
@@ -306,7 +384,7 @@ export function ProductForm({
               onClick={() =>
                 setStockRows((rows) => [
                   ...rows,
-                  { storePlaceId: "", quantity: "" },
+                  { storagePlaceSlug: "", quantity: "" },
                 ])
               }
             >

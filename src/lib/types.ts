@@ -66,3 +66,75 @@ export interface TeamMember {
   role: TeamRole;
   status: EntityStatus;
 }
+
+// ---------------------------------------------------------------------
+// Real IMS API (products feature only — see src/lib/api.ts). These mirror
+// https://ims-v2.codex.com.np/schema/ response shapes: entities are keyed
+// by slug rather than id, and money fields are decimal strings.
+// ---------------------------------------------------------------------
+
+export interface PaginatedResponse<T> {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+}
+
+export interface ApiGroup {
+  name: string;
+  slug: string;
+  is_active: boolean;
+}
+
+export interface ApiCategory {
+  title?: string;
+  name: string;
+  slug: string;
+  group: string | null;
+  is_active: boolean;
+}
+
+export interface ApiUnit {
+  name: string;
+  symbol?: string;
+  slug: string;
+  is_active: boolean;
+}
+
+export interface ApiStoragePlace {
+  name: string;
+  slug: string;
+  is_active: boolean;
+}
+
+export interface ApiProductStorage {
+  id: number;
+  storage_place: string | null;
+  storage_place_name: string;
+  stock: number;
+  is_active: boolean;
+}
+
+export interface ApiProduct {
+  owner: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  group: string | null;
+  group_name: string | null;
+  unit: string | null;
+  unit_name: string | null;
+  category: string | null;
+  category_name: string | null;
+  primary_unit?: string;
+  primary_unit_name?: string;
+  stock: string;
+  price: string | null;
+  cost_price: string;
+  selling_price: string;
+  is_pinned: boolean;
+  is_active: boolean;
+  threshold: string;
+  image: string | null;
+  stock_levels: ApiProductStorage[];
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   FileSpreadsheet,
@@ -29,24 +29,63 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { categories, groups, products, units } from "@/lib/mock-data";
+import { listProducts, setProductActive, setProductPinned } from "@/lib/api";
+import type { ApiProduct } from "@/lib/types";
 
 export default function ProductsPage() {
   const router = useRouter();
   const [query, setQuery] = useState("");
+  const [items, setItems] = useState<ApiProduct[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [updatingSlug, setUpdatingSlug] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    listProducts()
+      .then((data) => {
+        if (!cancelled) setItems(data);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load products");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return products;
-    return products.filter((p) => p.name.toLowerCase().includes(q));
-  }, [query]);
+    if (!q) return items;
+    return items.filter((p) => p.name.toLowerCase().includes(q));
+  }, [items, query]);
 
-  const groupName = (id?: string) =>
-    groups.find((g) => g.id === id)?.name ?? "—";
-  const categoryName = (id?: string) =>
-    categories.find((c) => c.id === id)?.name ?? "—";
-  const unitName = (id?: string) =>
-    units.find((u) => u.id === id)?.name ?? "—";
+  const handleToggleActive = async (product: ApiProduct) => {
+    setUpdatingSlug(product.slug);
+    try {
+      const updated = await setProductActive(product.slug, !product.is_active);
+      setItems((rows) =>
+        rows.map((row) => (row.slug === updated.slug ? updated : row))
+      );
+    } finally {
+      setUpdatingSlug(null);
+    }
+  };
+
+  const handleTogglePinned = async (product: ApiProduct) => {
+    setUpdatingSlug(product.slug);
+    try {
+      const updated = await setProductPinned(product.slug, !product.is_pinned);
+      setItems((rows) =>
+        rows.map((row) => (row.slug === updated.slug ? updated : row))
+      );
+    } finally {
+      setUpdatingSlug(null);
+    }
+  };
 
   return (
     <>
@@ -98,7 +137,25 @@ export default function ProductsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.length === 0 ? (
+                {loading ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={8}
+                      className="h-32 text-center text-sm text-muted-foreground"
+                    >
+                      Loading products...
+                    </TableCell>
+                  </TableRow>
+                ) : error ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={8}
+                      className="h-32 text-center text-sm text-destructive"
+                    >
+                      {error}
+                    </TableCell>
+                  </TableRow>
+                ) : filtered.length === 0 ? (
                   <TableRow>
                     <TableCell
                       colSpan={8}
@@ -110,25 +167,25 @@ export default function ProductsPage() {
                 ) : (
                   filtered.map((product) => (
                     <TableRow
-                      key={product.id}
+                      key={product.slug}
                       className="cursor-pointer"
-                      onClick={() => router.push(`/products/${product.id}`)}
+                      onClick={() => router.push(`/products/${product.slug}`)}
                     >
                       <TableCell className="font-medium">
                         {product.name}
                       </TableCell>
-                      <TableCell>{groupName(product.groupId)}</TableCell>
-                      <TableCell>{categoryName(product.categoryId)}</TableCell>
-                      <TableCell>{unitName(product.unitId)}</TableCell>
+                      <TableCell>{product.group_name ?? "—"}</TableCell>
+                      <TableCell>{product.category_name ?? "—"}</TableCell>
+                      <TableCell>{product.unit_name ?? "—"}</TableCell>
                       <TableCell className="text-right">
-                        Rs {product.price.toFixed(2)}
+                        Rs {Number(product.selling_price || 0).toFixed(2)}
                       </TableCell>
                       <TableCell className="text-right">
-                        {product.stock}
+                        {Number(product.stock)}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={product.active ? "default" : "secondary"}>
-                          {product.active ? "Active" : "Inactive"}
+                        <Badge variant={product.is_active ? "default" : "secondary"}>
+                          {product.is_active ? "Active" : "Inactive"}
                         </Badge>
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
@@ -141,14 +198,25 @@ export default function ProductsPage() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
                               onClick={() =>
-                                router.push(`/products/${product.id}/edit`)
+                                router.push(`/products/${product.slug}/edit`)
                               }
                             >
                               Edit
                             </DropdownMenuItem>
-                            <DropdownMenuItem variant="destructive">
-                              {product.active ? "Deactivate" : "Activate"}
+                            <DropdownMenuItem
+                              disabled={updatingSlug === product.slug}
+                              onClick={() => handleTogglePinned(product)}
+                            >
+                              {product.is_pinned ? "Unpin" : "Pin"}
                             </DropdownMenuItem>
+                            {!product.is_active ? (
+                              <DropdownMenuItem
+                                disabled={updatingSlug === product.slug}
+                                onClick={() => handleToggleActive(product)}
+                              >
+                                Activate
+                              </DropdownMenuItem>
+                            ) : null}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>

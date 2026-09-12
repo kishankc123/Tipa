@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import { Lightbulb, Mail } from "lucide-react";
 
 import { SiteHeader } from "@/components/site-header";
@@ -6,8 +9,27 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { submitContactMessage } from "@/lib/api";
 
 export default function ContactUsPage() {
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  const handleSend = async () => {
+    if (!subject.trim() || !message.trim()) return;
+    setSending(true);
+    try {
+      await submitContactMessage({ subject, message });
+      setSubject("");
+      setMessage("");
+      setSent(true);
+    } finally {
+      setSending(false);
+    }
+  };
+
   return (
     <>
       <SiteHeader title="Contact Us" description="We're here to help" />
@@ -31,7 +53,12 @@ export default function ContactUsPage() {
               <p className="text-sm font-medium">Send a Message</p>
               <div className="space-y-1.5">
                 <Label htmlFor="subject">Subject</Label>
-                <Input id="subject" placeholder="What is this about?" />
+                <Input
+                  id="subject"
+                  placeholder="What is this about?"
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="message">Message</Label>
@@ -39,9 +66,22 @@ export default function ContactUsPage() {
                   id="message"
                   placeholder="Tell us more about your request"
                   rows={5}
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
                 />
               </div>
-              <Button className="w-full">Send Message</Button>
+              {sent ? (
+                <p className="text-xs text-primary">
+                  Message sent — we&apos;ll get back to you within 24 hrs.
+                </p>
+              ) : null}
+              <Button
+                className="w-full"
+                onClick={handleSend}
+                disabled={!subject.trim() || !message.trim() || sending}
+              >
+                {sending ? "Sending..." : "Send Message"}
+              </Button>
               <p className="text-center text-xs text-muted-foreground">
                 You can mail us at{" "}
                 <a

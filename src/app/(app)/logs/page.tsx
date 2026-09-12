@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Download } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
@@ -15,14 +16,28 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { exportLogs } from "@/lib/api";
 import { inventoryLogs } from "@/lib/mock-data";
 
 export default function LogsPage() {
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [exporting, setExporting] = useState(false);
+
   const logsByDate = new Map<string, number>();
   for (const log of inventoryLogs) {
     logsByDate.set(log.date, (logsByDate.get(log.date) ?? 0) + 1);
   }
   const rows = Array.from(logsByDate.entries());
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      await exportLogs({ from: from || undefined, to: to || undefined });
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <>
@@ -33,15 +48,28 @@ export default function LogsPage() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
               <div className="flex flex-1 flex-col gap-1.5">
                 <label className="text-xs text-muted-foreground">From</label>
-                <Input type="date" />
+                <Input
+                  type="date"
+                  value={from}
+                  onChange={(e) => setFrom(e.target.value)}
+                />
               </div>
               <div className="flex flex-1 flex-col gap-1.5">
                 <label className="text-xs text-muted-foreground">To</label>
-                <Input type="date" />
+                <Input
+                  type="date"
+                  value={to}
+                  onChange={(e) => setTo(e.target.value)}
+                />
               </div>
-              <Button variant="outline" className="sm:w-auto">
+              <Button
+                variant="outline"
+                className="sm:w-auto"
+                onClick={handleExport}
+                disabled={exporting}
+              >
                 <Download />
-                Export Logs
+                {exporting ? "Exporting..." : "Export Logs"}
               </Button>
             </div>
           </CardContent>

@@ -3,6 +3,11 @@
 import { Store } from "lucide-react";
 
 import { ManagementList } from "@/components/management-list";
+import {
+  createStorePlace,
+  toggleStorePlaceStatus,
+  updateStorePlace,
+} from "@/lib/api";
 import { storePlaces } from "@/lib/mock-data";
 
 export default function StorePlacesPage() {
@@ -16,6 +21,9 @@ export default function StorePlacesPage() {
       searchPlaceholder="Search Store place..."
       emptyTitle="No Store Places Yet"
       emptyDescription="Add a store place to get started."
+      createEntity={createStorePlace}
+      updateEntity={updateStorePlace}
+      toggleEntityStatus={toggleStorePlaceStatus}
     />
   );
 }
