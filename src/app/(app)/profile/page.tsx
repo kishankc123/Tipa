@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   BellRing,
@@ -17,7 +20,9 @@ import { SiteHeader } from "@/components/site-header";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { getCurrentUser } from "@/lib/api";
 import { dashboardSummary } from "@/lib/mock-data";
+import type { ApiWhoami } from "@/lib/types";
 
 const links = [
   { title: "Edit Profile", href: "/edit-profile", icon: User },
@@ -33,6 +38,25 @@ const links = [
 ];
 
 export default function ProfilePage() {
+  const [user, setUser] = useState<ApiWhoami | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getCurrentUser()
+      .then((data) => {
+        if (!cancelled) setUser(data);
+      })
+      .catch(() => {
+        // Non-fatal: the card below just falls back to placeholders.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const businessName = user?.business_name ?? "Your Business";
+  const initial = businessName.charAt(0).toUpperCase() || "?";
+
   return (
     <>
       <SiteHeader title="Profile" description="Manage your account and store" />
@@ -41,12 +65,12 @@ export default function ProfilePage() {
           <CardContent className="flex flex-col items-center gap-2 pt-6 text-center">
             <Avatar className="size-16">
               <AvatarFallback className="bg-primary/20 text-lg font-semibold text-primary">
-                G
+                {initial}
               </AvatarFallback>
             </Avatar>
-            <p className="text-lg font-semibold">GENERAL STORE</p>
-            <p className="text-sm opacity-70">kishankcofc@gmail.com</p>
-            <Badge className="mt-1">Owner</Badge>
+            <p className="text-lg font-semibold uppercase">{businessName}</p>
+            <p className="text-sm opacity-70">{user?.email ?? ""}</p>
+            <Badge className="mt-1 capitalize">{user?.team_role ?? "Owner"}</Badge>
           </CardContent>
         </Card>
 

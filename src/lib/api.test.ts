@@ -1,19 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Each import of "@/lib/mock-data" returns the same in-memory arrays that
-// api.ts mutates. Resetting modules between tests would just re-import the
-// same seed data anyway (mock-data.ts has no reset hook), so instead we
-// keep module state and assert against unique, per-test entity names to
-// avoid cross-test interference.
-
 import * as api from "@/lib/api";
-import { categories, groups, storePlaces, units } from "@/lib/mock-data";
 import { API_BASE_URL } from "@/lib/config";
 import { clearTokens, setTokens } from "@/lib/auth";
-
-function uniqueName(prefix: string) {
-  return `${prefix}-${Math.random().toString(36).slice(2)}`;
-}
 
 function jsonResponse(body: unknown, status = 200) {
   return {
@@ -210,114 +199,276 @@ describe("products (real API)", () => {
   });
 });
 
-describe("named entity CRUD (groups/categories/units/store places)", () => {
-  it("createGroup defaults to active status when omitted", async () => {
-    const name = uniqueName("Group");
-    const group = await api.createGroup(name);
-
-    expect(group.name).toBe(name);
-    expect(group.status).toBe("active");
-    expect(groups.find((g) => g.id === group.id)).toEqual(group);
+describe("named entity CRUD (groups/categories/units/store places, real API)", () => {
+  beforeEach(() => {
+    setTokens({ access: "test-access-token", refresh: "test-refresh-token" });
   });
 
-  it("createGroup honors an explicit status", async () => {
-    const group = await api.createGroup(uniqueName("Group"), "inactive");
+  afterEach(() => {
+    clearTokens();
+    vi.unstubAllGlobals();
+  });
+
+  it("createGroup posts name + is_active and maps the slug back to id/status", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ name: "Dairy", slug: "dairy", is_active: true })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const group = await api.createGroup("Dairy");
+
+    expect(group).toEqual({ id: "dairy", name: "Dairy", status: "active" });
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toBe(`${API_BASE_URL}/api/system/groups/`);
+    expect(JSON.parse(options.body)).toEqual({ name: "Dairy", is_active: true });
+  });
+
+  it("createGroup honors an explicit inactive status", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse({ name: "Dairy", slug: "dairy", is_active: false })
+      )
+    );
+
+    const group = await api.createGroup("Dairy", "inactive");
     expect(group.status).toBe("inactive");
   });
 
-  it("updateGroup patches name and status", async () => {
-    const group = await api.createGroup(uniqueName("Group"));
-    const renamed = uniqueName("Renamed");
+  it("updateGroup PATCHes name and is_active", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ name: "Cold Storage", slug: "dairy", is_active: false })
+      );
+    vi.stubGlobal("fetch", fetchMock);
 
-    const updated = await api.updateGroup(group.id, { name: renamed, status: "inactive" });
-
-    expect(updated.name).toBe(renamed);
-    expect(updated.status).toBe("inactive");
-  });
-
-  it("updateGroup throws for an unknown id", async () => {
-    await expect(api.updateGroup("nope", { name: "x" })).rejects.toThrow(/not found/i);
-  });
-
-  it("toggleGroupStatus flips active <-> inactive", async () => {
-    const group = await api.createGroup(uniqueName("Group"), "active");
-
-    const toggled = await api.toggleGroupStatus(group.id);
-    expect(toggled.status).toBe("inactive");
-
-    const toggledAgain = await api.toggleGroupStatus(group.id);
-    expect(toggledAgain.status).toBe("active");
-  });
-
-  it("toggleGroupStatus throws for an unknown id", async () => {
-    await expect(api.toggleGroupStatus("nope")).rejects.toThrow(/not found/i);
-  });
-
-  it("createCategory / updateCategory / toggleCategoryStatus behave the same way", async () => {
-    const category = await api.createCategory(uniqueName("Category"));
-    expect(category.status).toBe("active");
-
-    const updated = await api.updateCategory(category.id, { name: "Renamed" });
-    expect(updated.name).toBe("Renamed");
-
-    const toggled = await api.toggleCategoryStatus(category.id);
-    expect(toggled.status).toBe("inactive");
-    expect(categories.find((c) => c.id === category.id)?.status).toBe("inactive");
-  });
-
-  it("createUnit / updateUnit / toggleUnitStatus behave the same way", async () => {
-    const unit = await api.createUnit(uniqueName("Unit"));
-    expect(unit.status).toBe("active");
-
-    const updated = await api.updateUnit(unit.id, { name: "kg" });
-    expect(updated.name).toBe("kg");
-
-    const toggled = await api.toggleUnitStatus(unit.id);
-    expect(toggled.status).toBe("inactive");
-    expect(units.find((u) => u.id === unit.id)?.status).toBe("inactive");
-  });
-
-  it("createStorePlace / updateStorePlace / toggleStorePlaceStatus behave the same way", async () => {
-    const place = await api.createStorePlace(uniqueName("Shelf"));
-    expect(place.status).toBe("active");
-
-    const updated = await api.updateStorePlace(place.id, { name: "Back room" });
-    expect(updated.name).toBe("Back room");
-
-    const toggled = await api.toggleStorePlaceStatus(place.id);
-    expect(toggled.status).toBe("inactive");
-    expect(storePlaces.find((s) => s.id === place.id)?.status).toBe("inactive");
-  });
-});
-
-describe("team members", () => {
-  it("createTeamMember always starts as active regardless of input", async () => {
-    const member = await api.createTeamMember({
-      name: "Jane Doe",
-      email: "jane@example.com",
-      role: "staff",
+    const updated = await api.updateGroup("dairy", {
+      name: "Cold Storage",
+      status: "inactive",
     });
 
-    expect(member.status).toBe("active");
-    expect(member.id).toBeTruthy();
-    expect(member.email).toBe("jane@example.com");
+    expect(updated).toEqual({ id: "dairy", name: "Cold Storage", status: "inactive" });
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toBe(`${API_BASE_URL}/api/system/groups/dairy/`);
+    expect(options.method).toBe("PATCH");
+    expect(JSON.parse(options.body)).toEqual({
+      name: "Cold Storage",
+      is_active: false,
+    });
+  });
+
+  it("toggleGroupStatus reads current is_active then flips it", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({ name: "Dairy", slug: "dairy", is_active: true })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ name: "Dairy", slug: "dairy", is_active: false })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const toggled = await api.toggleGroupStatus("dairy");
+
+    expect(toggled.status).toBe("inactive");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][1]?.method ?? "GET").toBe("GET");
+    expect(fetchMock.mock.calls[1][1].method).toBe("PATCH");
+  });
+
+  it("createCategory sends both name and title", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ name: "Snacks", title: "Snacks", slug: "snacks", is_active: true })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const category = await api.createCategory("Snacks");
+
+    expect(category).toEqual({ id: "snacks", name: "Snacks", status: "active" });
+    const [, options] = fetchMock.mock.calls[0];
+    expect(JSON.parse(options.body)).toEqual({
+      name: "Snacks",
+      title: "Snacks",
+      is_active: true,
+    });
+  });
+
+  it("createUnit maps slug/name/is_active to id/name/status", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(jsonResponse({ name: "Kg", slug: "kg", is_active: true }))
+    );
+
+    const unit = await api.createUnit("Kg");
+    expect(unit).toEqual({ id: "kg", name: "Kg", status: "active" });
+  });
+
+  it("createStorePlace maps slug/name/is_active to id/name/status", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse({ name: "Fridge", slug: "fridge", is_active: true })
+      )
+    );
+
+    const place = await api.createStorePlace("Fridge");
+    expect(place).toEqual({ id: "fridge", name: "Fridge", status: "active" });
+  });
+
+  it("listGroups/listCategories/listUnits/listStorePlaces map paginated results", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          count: 1,
+          next: null,
+          previous: null,
+          results: [{ name: "Dairy", slug: "dairy", is_active: true }],
+        })
+      )
+    );
+
+    const groups = await api.listGroups();
+    expect(groups).toEqual([{ id: "dairy", name: "Dairy", status: "active" }]);
   });
 });
 
-describe("profile", () => {
-  it("updateProfile resolves with the same values it was given", async () => {
-    const input = {
-      username: "kishan",
-      contactNumber: "555-0100",
-      companyName: "Tipa",
-    };
-    await expect(api.updateProfile(input)).resolves.toEqual(input);
+describe("team members (real API)", () => {
+  beforeEach(() => {
+    setTokens({ access: "test-access-token", refresh: "test-refresh-token" });
   });
 
-  it("changePassword resolves with success without validating the input", async () => {
+  afterEach(() => {
+    clearTokens();
+    vi.unstubAllGlobals();
+  });
+
+  it("createTeamMember posts username/email/password/team_role", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ username: "jane", email: "jane@example.com", team_role: "member" })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const member = await api.createTeamMember({
+      username: "jane",
+      email: "jane@example.com",
+      password: "supersecret1",
+      role: "member",
+    });
+
+    expect(member.email).toBe("jane@example.com");
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toBe(`${API_BASE_URL}/api/system/team-members/`);
+    expect(JSON.parse(options.body)).toEqual({
+      username: "jane",
+      email: "jane@example.com",
+      password: "supersecret1",
+      team_role: "member",
+    });
+  });
+
+  it("listTeamMembers flattens the single Team response's team_members", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          owner: { username: "owner1", email: "o@example.com", business_name: null },
+          team_members: [
+            { id: 1, username: "jane", email: "jane@example.com", team_role: "member" },
+          ],
+        })
+      )
+    );
+
+    const members = await api.listTeamMembers();
+    expect(members).toHaveLength(1);
+    expect(members[0].username).toBe("jane");
+  });
+
+  it("setTeamMemberActive PATCHes is_active by numeric id", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ id: 1, is_active: false }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const updated = await api.setTeamMemberActive(1, false);
+
+    expect(updated.is_active).toBe(false);
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toBe(`${API_BASE_URL}/api/system/team-members/1/`);
+    expect(options.method).toBe("PATCH");
+    expect(JSON.parse(options.body)).toEqual({ is_active: false });
+  });
+});
+
+describe("profile (real API)", () => {
+  beforeEach(() => {
+    setTokens({ access: "test-access-token", refresh: "test-refresh-token" });
+  });
+
+  afterEach(() => {
+    clearTokens();
+    vi.unstubAllGlobals();
+  });
+
+  it("getCurrentUser unwraps the whoami response's data field", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse({ status: true, data: { email: "a@example.com", username: "a" } })
+      )
+    );
+
+    const user = await api.getCurrentUser();
+    expect(user.email).toBe("a@example.com");
+  });
+
+  it("updateProfile PATCHes profile fields and unwraps the response", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ status: true, data: { username: "kishan", email: "k@example.com" } })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const user = await api.updateProfile({
+      username: "kishan",
+      contactNumber: "555-0100",
+      businessName: "Tipa",
+    });
+
+    expect(user.username).toBe("kishan");
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toBe(`${API_BASE_URL}/api/system/auth/profile/`);
+    expect(JSON.parse(options.body)).toEqual({
+      username: "kishan",
+      business_name: "Tipa",
+      contact_number: "555-0100",
+    });
+  });
+
+  it("changePassword posts current/new/confirm password fields", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ detail: "OK" }));
+    vi.stubGlobal("fetch", fetchMock);
+
     await expect(
-      api.changePassword({ currentPassword: "old", newPassword: "new" })
+      api.changePassword({
+        currentPassword: "old",
+        newPassword: "new",
+        confirmNewPassword: "new",
+      })
     ).resolves.toEqual({ success: true });
+
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toBe(`${API_BASE_URL}/api/system/auth/profile/change-password/`);
+    expect(JSON.parse(options.body)).toEqual({
+      current_password: "old",
+      new_password: "new",
+      confirm_new_password: "new",
+    });
   });
 });
 

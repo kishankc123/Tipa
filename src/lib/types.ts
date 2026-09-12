@@ -138,3 +138,39 @@ export interface ApiProduct {
   image: string | null;
   stock_levels: ApiProductStorage[];
 }
+
+export type TeamMemberRoleEnum = "member" | "supervisor";
+
+export interface ApiTeamMember {
+  id: number;
+  username: string;
+  email: string;
+  business_name: string | null;
+  contact_number: string | null;
+  profile_image: string | null;
+  is_active: boolean;
+  team_owner: string;
+  team_role: TeamMemberRoleEnum;
+}
+
+export interface ApiTeam {
+  owner: {
+    username: string;
+    email: string;
+    business_name: string | null;
+  };
+  team_members: ApiTeamMember[];
+}
+
+export interface ApiWhoami {
+  id: number;
+  email: string;
+  username: string;
+  business_name: string | null;
+  is_active: boolean;
+  is_email_verified: boolean;
+  team_role: string;
+  contact_number: string | null;
+  address: string | null;
+  profile_image: string | null;
+}

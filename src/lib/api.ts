@@ -1,24 +1,19 @@
-import {
-  categories,
-  groups,
-  inventoryLogs,
-  storePlaces,
-  teamMembers,
-  units,
-} from "@/lib/mock-data";
+import { inventoryLogs } from "@/lib/mock-data";
 import type {
   ApiCategory,
   ApiGroup,
   ApiProduct,
   ApiStoragePlace,
+  ApiTeam,
+  ApiTeamMember,
   ApiUnit,
+  ApiWhoami,
   Category,
   EntityStatus,
   Group,
   PaginatedResponse,
   StorePlace,
-  TeamMember,
-  TeamRole,
+  TeamMemberRoleEnum,
   Unit,
 } from "@/lib/types";
 import { apiFetch } from "@/lib/api-client";
@@ -40,48 +35,6 @@ const LATENCY_MS = 350;
 
 function delay<T>(value: T, ms = LATENCY_MS): Promise<T> {
   return new Promise((resolve) => setTimeout(() => resolve(value), ms));
-}
-
-function generateId(prefix: string) {
-  return `${prefix}_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-}
-
-interface NamedEntity {
-  id: string;
-  name: string;
-  status: EntityStatus;
-}
-
-function createNamedEntity<T extends NamedEntity>(
-  list: T[],
-  prefix: string,
-  name: string,
-  status: EntityStatus
-): T {
-  const entity = { id: generateId(prefix), name, status } as T;
-  list.push(entity);
-  return entity;
-}
-
-function updateNamedEntity<T extends NamedEntity>(
-  list: T[],
-  id: string,
-  patch: Partial<Pick<T, "name" | "status">>
-): T {
-  const index = list.findIndex((item) => item.id === id);
-  if (index === -1) throw new Error(`Entity ${id} not found`);
-  list[index] = { ...list[index], ...patch };
-  return list[index];
-}
-
-function toggleNamedEntityStatus<T extends NamedEntity>(list: T[], id: string): T {
-  const index = list.findIndex((item) => item.id === id);
-  if (index === -1) throw new Error(`Entity ${id} not found`);
-  list[index] = {
-    ...list[index],
-    status: list[index].status === "active" ? "inactive" : "active",
-  };
-  return list[index];
 }
 
 // ---------------------------------------------------------------------
@@ -241,9 +194,9 @@ export async function getBulkImportTemplateUrl(): Promise<string> {
 }
 
 // ---------------------------------------------------------------------
-// Read-only lookups against the real API, used to populate the product
-// form's Group / Category / Unit / Storage Place selects with real slugs.
-// (Full CRUD management for these still lives on mock-data below.)
+// Shared pagination helper + read-only lookups against the real API,
+// used to populate the product form's Group / Category / Unit / Storage
+// Place selects with real slugs.
 // ---------------------------------------------------------------------
 
 async function fetchAllPages<T>(path: string): Promise<T[]> {
@@ -278,149 +231,295 @@ export async function listApiStoragePlaces(): Promise<ApiStoragePlace[]> {
 }
 
 // ---------------------------------------------------------------------
-// Groups
+// Groups (real API). Unlike products, PATCH here genuinely supports
+// is_active: false — verified against the live API — so status toggling
+// doesn't need the delete-then-reactivate workaround products required.
 // ---------------------------------------------------------------------
 
-/** POST /api/groups/ */
+function mapGroup(g: ApiGroup): Group {
+  return { id: g.slug, name: g.name, status: g.is_active ? "active" : "inactive" };
+}
+
+/** GET /api/system/groups/ */
+export async function listGroups(): Promise<Group[]> {
+  return (await listApiGroups()).map(mapGroup);
+}
+
+/** POST /api/system/groups/ */
 export async function createGroup(
   name: string,
   status: EntityStatus = "active"
 ): Promise<Group> {
-  return delay(createNamedEntity(groups, "grp", name, status));
+  const created: ApiGroup = await apiFetch("/api/system/groups/", {
+    method: "POST",
+    body: JSON.stringify({ name, is_active: status === "active" }),
+  });
+  return mapGroup(created);
 }
 
-/** PATCH /api/groups/{id}/ */
+/** PATCH /api/system/groups/{slug}/ */
 export async function updateGroup(
   id: string,
   patch: Partial<Pick<Group, "name" | "status">>
 ): Promise<Group> {
-  return delay(updateNamedEntity(groups, id, patch));
+  const body: Record<string, unknown> = {};
+  if (patch.name !== undefined) body.name = patch.name;
+  if (patch.status !== undefined) body.is_active = patch.status === "active";
+  const updated: ApiGroup = await apiFetch(`/api/system/groups/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+  return mapGroup(updated);
 }
 
-/** PATCH /api/groups/{id}/status/ */
+/** PATCH /api/system/groups/{slug}/ (flips is_active) */
 export async function toggleGroupStatus(id: string): Promise<Group> {
-  return delay(toggleNamedEntityStatus(groups, id));
+  const current: ApiGroup = await apiFetch(`/api/system/groups/${id}/`);
+  return updateGroup(id, { status: current.is_active ? "inactive" : "active" });
 }
 
 // ---------------------------------------------------------------------
-// Categories
+// Categories (real API)
 // ---------------------------------------------------------------------
 
-/** POST /api/categories/ */
+function mapCategory(c: ApiCategory): Category {
+  return { id: c.slug, name: c.name, status: c.is_active ? "active" : "inactive" };
+}
+
+/** GET /api/system/categories/ */
+export async function listCategories(): Promise<Category[]> {
+  return (await listApiCategories()).map(mapCategory);
+}
+
+/** POST /api/system/categories/ */
 export async function createCategory(
   name: string,
   status: EntityStatus = "active"
 ): Promise<Category> {
-  return delay(createNamedEntity(categories, "cat", name, status));
+  const created: ApiCategory = await apiFetch("/api/system/categories/", {
+    method: "POST",
+    body: JSON.stringify({ name, title: name, is_active: status === "active" }),
+  });
+  return mapCategory(created);
 }
 
-/** PATCH /api/categories/{id}/ */
+/** PATCH /api/system/categories/{slug}/ */
 export async function updateCategory(
   id: string,
   patch: Partial<Pick<Category, "name" | "status">>
 ): Promise<Category> {
-  return delay(updateNamedEntity(categories, id, patch));
+  const body: Record<string, unknown> = {};
+  if (patch.name !== undefined) {
+    body.name = patch.name;
+    body.title = patch.name;
+  }
+  if (patch.status !== undefined) body.is_active = patch.status === "active";
+  const updated: ApiCategory = await apiFetch(`/api/system/categories/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+  return mapCategory(updated);
 }
 
-/** PATCH /api/categories/{id}/status/ */
+/** PATCH /api/system/categories/{slug}/ (flips is_active) */
 export async function toggleCategoryStatus(id: string): Promise<Category> {
-  return delay(toggleNamedEntityStatus(categories, id));
+  const current: ApiCategory = await apiFetch(`/api/system/categories/${id}/`);
+  return updateCategory(id, { status: current.is_active ? "inactive" : "active" });
 }
 
 // ---------------------------------------------------------------------
-// Units
+// Units (real API)
 // ---------------------------------------------------------------------
 
-/** POST /api/units/ */
+function mapUnit(u: ApiUnit): Unit {
+  return { id: u.slug, name: u.name, status: u.is_active ? "active" : "inactive" };
+}
+
+/** GET /api/system/units/ */
+export async function listUnits(): Promise<Unit[]> {
+  return (await listApiUnits()).map(mapUnit);
+}
+
+/** POST /api/system/units/ */
 export async function createUnit(
   name: string,
   status: EntityStatus = "active"
 ): Promise<Unit> {
-  return delay(createNamedEntity(units, "unit", name, status));
+  const created: ApiUnit = await apiFetch("/api/system/units/", {
+    method: "POST",
+    body: JSON.stringify({ name, is_active: status === "active" }),
+  });
+  return mapUnit(created);
 }
 
-/** PATCH /api/units/{id}/ */
+/** PATCH /api/system/units/{slug}/ */
 export async function updateUnit(
   id: string,
   patch: Partial<Pick<Unit, "name" | "status">>
 ): Promise<Unit> {
-  return delay(updateNamedEntity(units, id, patch));
+  const body: Record<string, unknown> = {};
+  if (patch.name !== undefined) body.name = patch.name;
+  if (patch.status !== undefined) body.is_active = patch.status === "active";
+  const updated: ApiUnit = await apiFetch(`/api/system/units/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+  return mapUnit(updated);
 }
 
-/** PATCH /api/units/{id}/status/ */
+/** PATCH /api/system/units/{slug}/ (flips is_active) */
 export async function toggleUnitStatus(id: string): Promise<Unit> {
-  return delay(toggleNamedEntityStatus(units, id));
+  const current: ApiUnit = await apiFetch(`/api/system/units/${id}/`);
+  return updateUnit(id, { status: current.is_active ? "inactive" : "active" });
 }
 
 // ---------------------------------------------------------------------
-// Store Places
+// Store Places (real API)
 // ---------------------------------------------------------------------
 
-/** POST /api/store-places/ */
+function mapStorePlace(s: ApiStoragePlace): StorePlace {
+  return { id: s.slug, name: s.name, status: s.is_active ? "active" : "inactive" };
+}
+
+/** GET /api/system/storage-places/ */
+export async function listStorePlaces(): Promise<StorePlace[]> {
+  return (await listApiStoragePlaces()).map(mapStorePlace);
+}
+
+/** POST /api/system/storage-places/ */
 export async function createStorePlace(
   name: string,
   status: EntityStatus = "active"
 ): Promise<StorePlace> {
-  return delay(createNamedEntity(storePlaces, "store", name, status));
+  const created: ApiStoragePlace = await apiFetch("/api/system/storage-places/", {
+    method: "POST",
+    body: JSON.stringify({ name, is_active: status === "active" }),
+  });
+  return mapStorePlace(created);
 }
 
-/** PATCH /api/store-places/{id}/ */
+/** PATCH /api/system/storage-places/{slug}/ */
 export async function updateStorePlace(
   id: string,
   patch: Partial<Pick<StorePlace, "name" | "status">>
 ): Promise<StorePlace> {
-  return delay(updateNamedEntity(storePlaces, id, patch));
+  const body: Record<string, unknown> = {};
+  if (patch.name !== undefined) body.name = patch.name;
+  if (patch.status !== undefined) body.is_active = patch.status === "active";
+  const updated: ApiStoragePlace = await apiFetch(`/api/system/storage-places/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+  return mapStorePlace(updated);
 }
 
-/** PATCH /api/store-places/{id}/status/ */
+/** PATCH /api/system/storage-places/{slug}/ (flips is_active) */
 export async function toggleStorePlaceStatus(id: string): Promise<StorePlace> {
-  return delay(toggleNamedEntityStatus(storePlaces, id));
+  const current: ApiStoragePlace = await apiFetch(`/api/system/storage-places/${id}/`);
+  return updateStorePlace(id, { status: current.is_active ? "inactive" : "active" });
 }
 
 // ---------------------------------------------------------------------
-// Team Members
+// Team Members (real API). GET returns the caller's single Team (owner +
+// nested team_members); there's exactly one Team per account, so this
+// flattens it to a plain member list for the UI.
 // ---------------------------------------------------------------------
+
+/** GET /api/system/team-members/ */
+export async function listTeamMembers(): Promise<ApiTeamMember[]> {
+  // Despite PaginatedTeamList in the spec, this endpoint actually returns
+  // a single Team object directly ({owner, team_members}), not a
+  // {count, results} page — verified against the live API.
+  const team = await apiFetch<ApiTeam>("/api/system/team-members/");
+  return team.team_members;
+}
 
 export interface CreateTeamMemberInput {
-  name: string;
+  username: string;
   email: string;
-  role: TeamRole;
+  password: string;
+  role: TeamMemberRoleEnum;
 }
 
-/** POST /api/team-members/ */
+/** POST /api/system/team-members/ */
 export async function createTeamMember(
   input: CreateTeamMemberInput
-): Promise<TeamMember> {
-  const member: TeamMember = {
-    id: generateId("team"),
-    status: "active",
-    ...input,
-  };
-  teamMembers.push(member);
-  return delay(member);
+): Promise<ApiTeamMember> {
+  return apiFetch("/api/system/team-members/", {
+    method: "POST",
+    body: JSON.stringify({
+      username: input.username,
+      email: input.email,
+      password: input.password,
+      team_role: input.role,
+    }),
+  });
+}
+
+/** PATCH /api/system/team-members/{id}/ */
+export async function setTeamMemberActive(
+  id: number,
+  active: boolean
+): Promise<ApiTeamMember> {
+  return apiFetch(`/api/system/team-members/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify({ is_active: active }),
+  });
 }
 
 // ---------------------------------------------------------------------
-// Profile
+// Profile (real API)
 // ---------------------------------------------------------------------
+
+/** GET /api/system/auth/whoami/ */
+export async function getCurrentUser(): Promise<ApiWhoami> {
+  const res = await apiFetch<{ status: boolean; data: ApiWhoami }>(
+    "/api/system/auth/whoami/"
+  );
+  return res.data;
+}
 
 export interface UpdateProfileInput {
   username: string;
-  contactNumber: string;
-  companyName: string;
+  contactNumber?: string;
+  businessName?: string;
 }
 
-/** PATCH /api/profile/ */
-export async function updateProfile(input: UpdateProfileInput): Promise<UpdateProfileInput> {
-  return delay(input);
+/** PATCH /api/system/auth/profile/ */
+export async function updateProfile(input: UpdateProfileInput): Promise<ApiWhoami> {
+  const res = await apiFetch<{ status: boolean; data: ApiWhoami }>(
+    "/api/system/auth/profile/",
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        username: input.username,
+        business_name: input.businessName,
+        contact_number: input.contactNumber,
+      }),
+    }
+  );
+  return res.data;
 }
 
-/** POST /api/profile/change-password/ */
-export async function changePassword(_input: {
+export interface ChangePasswordInput {
   currentPassword: string;
   newPassword: string;
-}): Promise<{ success: true }> {
-  return delay({ success: true });
+  confirmNewPassword: string;
+}
+
+/** POST /api/system/auth/profile/change-password/ */
+export async function changePassword(
+  input: ChangePasswordInput
+): Promise<{ success: true }> {
+  await apiFetch("/api/system/auth/profile/change-password/", {
+    method: "POST",
+    body: JSON.stringify({
+      current_password: input.currentPassword,
+      new_password: input.newPassword,
+      confirm_new_password: input.confirmNewPassword,
+    }),
+  });
+  return { success: true };
 }
 
 // ---------------------------------------------------------------------

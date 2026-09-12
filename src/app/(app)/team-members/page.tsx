@@ -1,13 +1,20 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, Users } from "lucide-react";
+import { useEffect, useState } from "react";
+import { MoreHorizontal, Plus, Users } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
 import { SiteHeader } from "@/components/site-header";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -25,44 +32,82 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { createTeamMember } from "@/lib/api";
-import { teamMembers as initialTeamMembers } from "@/lib/mock-data";
-import type { TeamRole } from "@/lib/types";
+import { createTeamMember, listTeamMembers, setTeamMemberActive } from "@/lib/api";
+import type { ApiTeamMember, TeamMemberRoleEnum } from "@/lib/types";
 
-const roles: TeamRole[] = ["manager", "staff"];
+const roles: TeamMemberRoleEnum[] = ["member", "supervisor"];
 
 export default function TeamMembersPage() {
-  // Clone on init: `initialTeamMembers` is the same array the dummy API
-  // mutates directly, so state must own a separate copy or "Add" would
-  // double-apply (once via the API push, once via this component's
-  // optimistic state update).
-  const [teamMembers, setTeamMembers] = useState(() => [...initialTeamMembers]);
+  const [teamMembers, setTeamMembers] = useState<ApiTeamMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [updatingId, setUpdatingId] = useState<number | null>(null);
+
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<TeamRole>("staff");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState<TeamMemberRoleEnum>("member");
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    listTeamMembers()
+      .then((data) => {
+        if (!cancelled) setTeamMembers(data);
+      })
+      .catch((err) => {
+        if (!cancelled)
+          setLoadError(err instanceof Error ? err.message : "Failed to load team members");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const openAdd = () => {
-    setName("");
+    setUsername("");
     setEmail("");
-    setRole("staff");
+    setPassword("");
+    setRole("member");
+    setFormError(null);
     setSheetOpen(true);
   };
 
   const handleSave = async () => {
-    if (!name.trim() || !email.trim()) return;
+    if (!username.trim() || !email.trim() || password.length < 8) return;
     setSaving(true);
+    setFormError(null);
     try {
-      const member = await createTeamMember({
-        name: name.trim(),
+      await createTeamMember({
+        username: username.trim(),
         email: email.trim(),
+        password,
         role,
       });
-      setTeamMembers((rows) => [...rows, member]);
+      const refreshed = await listTeamMembers();
+      setTeamMembers(refreshed);
       setSheetOpen(false);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Failed to add team member.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleToggleActive = async (member: ApiTeamMember) => {
+    setUpdatingId(member.id);
+    try {
+      const updated = await setTeamMemberActive(member.id, !member.is_active);
+      setTeamMembers((rows) =>
+        rows.map((row) => (row.id === updated.id ? updated : row))
+      );
+    } finally {
+      setUpdatingId(null);
     }
   };
 
@@ -98,7 +143,13 @@ export default function TeamMembersPage() {
 
         <Card>
           <CardContent className="p-0">
-            {teamMembers.length === 0 ? (
+            {loading ? (
+              <p className="p-6 text-center text-sm text-muted-foreground">
+                Loading team members...
+              </p>
+            ) : loadError ? (
+              <p className="p-6 text-center text-sm text-destructive">{loadError}</p>
+            ) : teamMembers.length === 0 ? (
               <EmptyState
                 icon={Users}
                 title="No Team Members Yet"
@@ -112,14 +163,35 @@ export default function TeamMembersPage() {
                     className="flex items-center justify-between px-4 py-3"
                   >
                     <div>
-                      <p className="text-sm font-medium">{member.name}</p>
+                      <p className="text-sm font-medium">{member.username}</p>
                       <p className="text-xs text-muted-foreground">
                         {member.email}
                       </p>
                     </div>
-                    <Badge variant="outline" className="capitalize">
-                      {member.role}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="capitalize">
+                        {member.team_role}
+                      </Badge>
+                      <Badge variant={member.is_active ? "default" : "secondary"}>
+                        {member.is_active ? "Active" : "Inactive"}
+                      </Badge>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <MoreHorizontal className="size-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            variant={member.is_active ? "destructive" : "default"}
+                            disabled={updatingId === member.id}
+                            onClick={() => handleToggleActive(member)}
+                          >
+                            {member.is_active ? "Deactivate" : "Activate"}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -137,13 +209,18 @@ export default function TeamMembersPage() {
             </SheetDescription>
           </SheetHeader>
           <div className="flex flex-col gap-4 px-4">
+            {formError ? (
+              <Alert variant="destructive">
+                <AlertDescription>{formError}</AlertDescription>
+              </Alert>
+            ) : null}
             <div className="space-y-1.5">
-              <Label htmlFor="member-name">Name</Label>
+              <Label htmlFor="member-username">Username</Label>
               <Input
-                id="member-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Full name"
+                id="member-username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Username"
               />
             </div>
             <div className="space-y-1.5">
@@ -157,10 +234,20 @@ export default function TeamMembersPage() {
               />
             </div>
             <div className="space-y-1.5">
+              <Label htmlFor="member-password">Password</Label>
+              <Input
+                id="member-password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="At least 8 characters"
+              />
+            </div>
+            <div className="space-y-1.5">
               <Label>Role</Label>
               <Select
                 value={role}
-                onValueChange={(value) => setRole(value as TeamRole)}
+                onValueChange={(value) => setRole(value as TeamMemberRoleEnum)}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select role" />
@@ -178,7 +265,9 @@ export default function TeamMembersPage() {
           <SheetFooter>
             <Button
               onClick={handleSave}
-              disabled={!name.trim() || !email.trim() || saving}
+              disabled={
+                !username.trim() || !email.trim() || password.length < 8 || saving
+              }
             >
               {saving ? "Adding..." : "Add"}
             </Button>

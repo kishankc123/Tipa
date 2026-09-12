@@ -1,8 +1,9 @@
 # Data Flow
 
 How data moves between the UI and the real IMS API, and which parts of the
-app still run on mock data. Scope of the real integration so far: **auth +
-products only** (see the table at the bottom).
+app still run on mock data. Scope of the real integration so far: **auth,
+products, groups/categories/units/storage-places management, team members,
+and profile** (see the table at the bottom).
 
 ## Layers
 
@@ -80,13 +81,32 @@ instead of ids) — see `toProductRequestBody()` for an example.
 Real-API functions in this file: `listProducts`, `getProduct`,
 `createProduct`, `updateProduct`, `setProductActive`, `setProductPinned`,
 `deleteProduct`, `createInventoryLogEntry`, `bulkImportProducts`,
-`listApiGroups`, `listApiCategories`, `listApiUnits`,
-`listApiStoragePlaces`.
+`listApiGroups`/`listApiCategories`/`listApiUnits`/`listApiStoragePlaces`
+(raw shapes, used by the product form's dropdowns), `listGroups`/
+`createGroup`/`updateGroup`/`toggleGroupStatus` and the matching
+Category/Unit/StorePlace functions (mapped back to the old mock shape —
+see "Mapping real shapes onto the old mock types" below), `listTeamMembers`/
+`createTeamMember`/`setTeamMemberActive`, and `getCurrentUser`/
+`updateProfile`/`changePassword`.
 
-Everything else in this file (`createGroup`, `createCategory`,
-`createTeamMember`, `updateProfile`, `exportLogs`, etc.) still operates on
-the in-memory arrays in
-[src/lib/mock-data.ts](src/lib/mock-data.ts) — no network call.
+Only `exportLogs` and `submitContactMessage` still operate on
+[src/lib/mock-data.ts](src/lib/mock-data.ts) — no network call yet
+(Dashboard, Reports, and Logs are the remaining mock areas; see the table
+below).
+
+#### Mapping real shapes onto the old mock types
+
+`Group`/`Category`/`Unit`/`StorePlace` (in `src/lib/types.ts`) are the
+*old* mock shape: `{ id, name, status }`. Rather than rewrite
+`ManagementList` and its four pages to a new shape, `api.ts` maps the real
+`ApiGroup`/`ApiCategory`/`ApiUnit`/`ApiStoragePlace` responses onto that
+same old shape (`mapGroup`, `mapCategory`, `mapUnit`, `mapStorePlace` in
+`api.ts`: `slug → id`, `is_active → status`). So `createGroup`,
+`updateGroup`, `toggleGroupStatus`, etc. keep their original signatures
+and return types — the four management pages and `ManagementList` needed
+no interface changes, only a switch from a static `mock-data` import to
+an async fetch (see the products page for the same pattern applied
+earlier).
 
 ### 5. The proxy — [src/app/api/system/\[...path\]/route.ts](src/app/api/system/[...path]/route.ts)
 
@@ -112,10 +132,14 @@ origin — sidestepping both.
 
 Real-API shapes are prefixed `Api*` (`ApiProduct`, `ApiGroup`,
 `ApiCategory`, `ApiUnit`, `ApiStoragePlace`, `ApiProductStorage`,
-`PaginatedResponse<T>`) and kept separate from the original mock types
-(`Product`, `Group`, `Category`, ...) so the still-mock pages
-(dashboard, reports, group/category/unit/storeplace management) didn't
-need to change.
+`ApiTeamMember`, `ApiTeam`, `ApiWhoami`, `PaginatedResponse<T>`) and kept
+separate from the original mock types (`Product`, `Group`, `Category`,
+`TeamMember`, ...). Product, Team Member, and Profile pages consume the
+`Api*` types directly; the four management pages (Group/Category/Unit/
+Storage Place) instead get the old mock types back from `api.ts`, mapped
+from the real response (see "Mapping real shapes onto the old mock
+types" above) — both patterns exist, pick whichever fits when extending
+this further.
 
 ## Sequence: logging in
 
@@ -163,20 +187,17 @@ AddProductPage (src/app/(app)/products/new/page.tsx)
 
 | Area | Status | Files |
 |---|---|---|
-| Auth (login/logout/guard) | **Real API** | `src/lib/auth.ts`, `src/app/login/`, `src/components/auth-guard.tsx` |
+| Auth (login/logout/guard/register) | **Real API** | `src/lib/auth.ts`, `src/app/login/`, `src/app/register/`, `src/components/auth-guard.tsx` |
 | Products (list/create/edit/delete/pin/activate/bulk) | **Real API** | `src/app/(app)/products/*`, `src/components/product-form.tsx` |
-| Group/Category/Unit/Storage-Place *lookups* (for the product form's dropdowns) | **Real API**, read-only | `listApiGroups` etc. in `src/lib/api.ts` |
-| Group/Category/Unit/Storage-Place *management pages* (create/edit/toggle) | Mock data | `src/app/(app)/{group,category,units,storeplace}-management/`, `src/components/management-list.tsx` |
-| Team Members | Mock data | `src/app/(app)/team-members/page.tsx` |
-| Profile / Edit Profile | Mock data (hardcoded placeholder values, not even wired to mock-data) | `src/app/(app)/profile/page.tsx`, `src/app/(app)/edit-profile/page.tsx` |
+| Group/Category/Unit/Storage-Place management (create/edit/toggle) | **Real API** | `src/app/(app)/{group,category,units,storeplace}-management/`, mapped functions in `src/lib/api.ts` |
+| Team Members (list/create/activate/deactivate) | **Real API** | `src/app/(app)/team-members/page.tsx` |
+| Profile / Edit Profile (view + update username/contact/business name + change password) | **Real API** | `src/app/(app)/profile/page.tsx`, `src/app/(app)/edit-profile/page.tsx` |
 | Dashboard, Reports, Logs | Mock data | `src/app/(app)/dashboard/`, `src/app/(app)/reports/`, `src/app/(app)/logs/` |
 
-Because the lookup dropdowns in the product form hit the real API but the
-management pages for those same entities (Group/Category/Unit/Storage
-Place) still edit mock data, **groups/categories/units/storage-places you
-create in those management pages won't show up in the product form**, and
-vice versa. They're two different data sources until those pages are
-migrated too.
+Dashboard/Reports/Logs are the only areas left on mock data — they need
+the analytics-shaped endpoints (`/inventory-logs/dashboard/`,
+`/inventory-logs/by-day/`, `/products/valuation-report/`, etc.), which is
+meaningfully more work than the CRUD pages above and wasn't in scope yet.
 
 ## Real-API quirks discovered by testing (not from the spec)
 
@@ -192,6 +213,25 @@ making real requests, not by reading docs:
   `src/app/(app)/products/[id]/page.tsx`'s delete error handling).
 - The API has no refresh-token endpoint, so a `401` just clears tokens
   and sends the user back to `/login` — no silent token refresh.
+- Unlike products, `PATCH .../groups/{slug}/` (and the Category/Unit/
+  Storage-Place equivalents) genuinely supports `is_active: false` —
+  verified live. So toggling status there is a plain PATCH, no
+  delete-then-reactivate workaround needed. `DELETE` on these entities is
+  also a **soft** delete (sets `is_active: false`, the row still exists) —
+  the opposite of products, where `DELETE` is a hard delete. `api.ts`
+  doesn't call `DELETE` for these at all; it uses PATCH for both create
+  and toggle, since that's simpler and works for both directions.
+- `GET /api/system/team-members/` returns a single `Team` object
+  (`{owner, team_members}`) directly, **not** the paginated
+  `{count, results, ...}` wrapper the spec's `PaginatedTeamList` schema
+  claims. `listTeamMembers()` in `api.ts` accounts for this.
+- Creating a team member (`POST /team-members/`) returns the new member
+  *without* an `id` field (the create serializer omits it) — `api.ts`
+  re-fetches the full list afterward to get one with an `id`, since
+  that's needed to PATCH (activate/deactivate) it later.
+- `CategoryRequest` has both a `name` and a `title` field; the real
+  backend behavior around the distinction is unclear, so `createCategory`/
+  `updateCategory` just send the same value for both.
 
 ## Extending this pattern to another resource
 

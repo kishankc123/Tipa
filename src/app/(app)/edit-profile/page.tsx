@@ -1,44 +1,93 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pencil } from "lucide-react";
 
 import { SiteHeader } from "@/components/site-header";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { changePassword, updateProfile } from "@/lib/api";
+import { changePassword, getCurrentUser, updateProfile } from "@/lib/api";
 
 export default function EditProfilePage() {
-  const [username, setUsername] = useState("Kishankc");
-  const [contact, setContact] = useState("1234567891");
-  const [company, setCompany] = useState("General Store");
+  const [username, setUsername] = useState("");
+  const [contact, setContact] = useState("");
+  const [company, setCompany] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getCurrentUser()
+      .then((user) => {
+        if (cancelled) return;
+        setUsername(user.username);
+        setContact(user.contact_number ?? "");
+        setCompany(user.business_name ?? "");
+      })
+      .catch((err) => {
+        if (!cancelled)
+          setLoadError(err instanceof Error ? err.message : "Failed to load profile");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleSave = async () => {
     setSaving(true);
+    setError(null);
     setSavedMessage(null);
     try {
-      await updateProfile({
-        username,
-        contactNumber: contact,
-        companyName: company,
-      });
-      if (currentPassword && newPassword) {
-        await changePassword({ currentPassword, newPassword });
+      if (newPassword || currentPassword || confirmNewPassword) {
+        if (newPassword !== confirmNewPassword) {
+          throw new Error("New password and confirmation do not match.");
+        }
+        await changePassword({
+          currentPassword,
+          newPassword,
+          confirmNewPassword,
+        });
         setCurrentPassword("");
         setNewPassword("");
+        setConfirmNewPassword("");
       }
+      await updateProfile({
+        username,
+        contactNumber: contact || undefined,
+        businessName: company || undefined,
+      });
       setSavedMessage("Profile updated.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update profile.");
     } finally {
       setSaving(false);
     }
   };
+
+  if (loading) {
+    return (
+      <>
+        <SiteHeader title="Edit Profile" backHref="/profile" />
+        <div className="flex flex-1 items-center justify-center p-6 text-sm text-muted-foreground">
+          Loading profile...
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -48,12 +97,17 @@ export default function EditProfilePage() {
         backHref="/profile"
       />
       <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
+        {loadError ? (
+          <Alert variant="destructive">
+            <AlertDescription>{loadError}</AlertDescription>
+          </Alert>
+        ) : null}
         <Card className="bg-secondary text-secondary-foreground">
           <CardContent className="flex flex-col items-center gap-2 pt-6 text-center">
             <div className="relative">
               <Avatar className="size-16">
                 <AvatarFallback className="bg-primary/20 text-lg font-semibold text-primary">
-                  K
+                  {username.charAt(0).toUpperCase() || "?"}
                 </AvatarFallback>
               </Avatar>
               <button
@@ -129,6 +183,21 @@ export default function EditProfilePage() {
                 onChange={(e) => setNewPassword(e.target.value)}
               />
             </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="confirm-new-password">Confirm New Password</Label>
+              <Input
+                id="confirm-new-password"
+                type="password"
+                placeholder="Re-enter new password"
+                value={confirmNewPassword}
+                onChange={(e) => setConfirmNewPassword(e.target.value)}
+              />
+            </div>
+            {error ? (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            ) : null}
             {savedMessage ? (
               <p className="text-xs text-primary">{savedMessage}</p>
             ) : null}
